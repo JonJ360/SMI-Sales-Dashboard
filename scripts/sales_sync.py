@@ -235,7 +235,7 @@ def _customer_details(rows: list[dict[str, Any]], included_names: set[str]) -> d
 def _customer_comparison(current: list[dict[str, Any]], prior: list[dict[str, Any]]) -> list[dict[str, Any]]:
     current_by_name = {item["name"]: item for item in _rank(current, "customer")}
     result = []
-    for prior_item in _rank(prior, "customer", 10):
+    for prior_item in _rank(prior, "customer", 25):
         current_item = current_by_name.get(prior_item["name"], {})
         result.append({
             "name": prior_item["name"],

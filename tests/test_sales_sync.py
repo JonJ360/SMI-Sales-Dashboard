@@ -78,6 +78,17 @@ class SalesSyncTests(unittest.TestCase):
         snap = build_snapshot(rows, as_of=dt.date(2026, 9, 13))
         self.assertEqual([r["name"] for r in snap["rankings"]["1M"]["salespeople"]], ["NEW"])
 
+    def test_customer_watchlist_uses_prior_year_top_25(self):
+        rows = []
+        for rank in range(30):
+            rows.append(normalize_transaction({"sop":f"P{rank}","date":dt.date(2025,8,2),"customer":f"C{rank:02d}","salesperson":"SAM","location":"FARGO","sales":3000-rank,"extended_cost":1000,"kind":"Invoice"}))
+            rows.append(normalize_transaction({"sop":f"C{rank}","date":dt.date(2026,8,2),"customer":f"C{rank:02d}","salesperson":"SAM","location":"FARGO","sales":1000+rank,"extended_cost":500,"kind":"Invoice"}))
+        snap = build_snapshot(rows, as_of=dt.date(2026,9,13))
+        watchlist = snap["comparisons"]["YTD"]["customer_comparison"]
+        self.assertEqual(len(watchlist), 25)
+        self.assertEqual(watchlist[0]["name"], "C00")
+        self.assertEqual(watchlist[-1]["name"], "C24")
+
 
 if __name__ == "__main__":
     unittest.main()

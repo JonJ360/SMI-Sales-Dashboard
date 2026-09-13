@@ -62,6 +62,12 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("#salespersonDrawer .drawer-pies{order:1}", html)
         self.assertIn("#salespersonDrawer .drawer-grid{order:2}", html)
 
+    def test_customer_watchlist_labels_prior_year_top_25(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn("Prior-Year Top 25 Customer Watchlist", html)
+        self.assertIn("Last Year", html)
+        self.assertIn("This Year", html)
+
 
 if __name__ == "__main__":
     unittest.main()
