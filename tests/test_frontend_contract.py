@@ -37,7 +37,6 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("Net Sales", html)
         self.assertIn('id="customerDrawer"', html)
         self.assertIn("openCustomer", html)
-        self.assertIn('id="customerComparisonBody"', html)
 
     def test_salesperson_drilldown_uses_month_over_month_columns(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
@@ -62,11 +61,14 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("#salespersonDrawer .drawer-pies{order:1}", html)
         self.assertIn("#salespersonDrawer .drawer-grid{order:2}", html)
 
-    def test_customer_watchlist_labels_prior_year_top_25(self):
+    def test_top_25_customers_show_last_year_this_year_and_dollar_change(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
-        self.assertIn("Prior-Year Top 25 Customer Watchlist", html)
+        self.assertIn("Top 25 Customers — Year-over-Year", html)
         self.assertIn("Last Year", html)
         self.assertIn("This Year", html)
+        self.assertIn("Dollar Change", html)
+        self.assertIn("function customerDollarChange", html)
+        self.assertNotIn('id="customerComparisonBody"', html)
 
 
 if __name__ == "__main__":

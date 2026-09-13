@@ -88,6 +88,9 @@ class SalesSyncTests(unittest.TestCase):
         self.assertEqual(len(watchlist), 25)
         self.assertEqual(watchlist[0]["name"], "C00")
         self.assertEqual(watchlist[-1]["name"], "C24")
+        current_top = snap["rankings"]["YTD"]["customers"][0]
+        self.assertEqual(current_top["name"], "C29")
+        self.assertEqual(current_top["prior_sales"], 2971.0)
 
 
 if __name__ == "__main__":

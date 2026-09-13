@@ -187,11 +187,16 @@ def _safe_prior(date: dt.date) -> dt.date:
         return date.replace(year=date.year - 1, day=28)
 
 
-def _ranking_bundle(period_rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _ranking_bundle(period_rows: list[dict[str, Any]], prior_rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    customers = _rank(period_rows, "customer", 25)
+    if prior_rows is not None:
+        prior_by_name = {item["name"]: item["sales"] for item in _rank(prior_rows, "customer")}
+        for customer in customers:
+            customer["prior_sales"] = prior_by_name.get(customer["name"], 0.0)
     return {
         "salespeople": _rank(period_rows, "salesperson"),
         "branches": _rank(period_rows, "location"),
-        "customers": _rank(period_rows, "customer", 25),
+        "customers": customers,
     }
 
 
@@ -270,7 +275,7 @@ def build_snapshot(rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = No
             months[f"{year}-{month:02d}"] = {
                 "current": total,
                 "prior": _totals(prior),
-                "rankings": _ranking_bundle(current),
+                "rankings": _ranking_bundle(current, prior),
                 "prior_rankings": _ranking_bundle(prior),
                 "customer_comparison": _customer_comparison(current, prior),
             }
@@ -286,7 +291,7 @@ def build_snapshot(rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = No
         "YTD": {"current": _totals(ytd), "prior": _totals(prior_ytd), "prior_rankings": _ranking_bundle(prior_ytd), "customer_comparison": _customer_comparison(ytd, prior_ytd)},
         "FULL": {"current": _totals(ytd), "prior": _totals(prior_ytd), "prior_rankings": _ranking_bundle(prior_ytd), "customer_comparison": _customer_comparison(ytd, prior_ytd)},
     }
-    period_rankings = {"1M": _ranking_bundle(rolling), "YTD": _ranking_bundle(ytd), "FULL": _ranking_bundle(full)}
+    period_rankings = {"1M": _ranking_bundle(rolling, prior_rolling), "YTD": _ranking_bundle(ytd, prior_ytd), "FULL": _ranking_bundle(full)}
     detail_customers: set[str] = set()
     for month_data in months.values():
         for group in (month_data["rankings"]["customers"], month_data["prior_rankings"]["customers"], month_data["customer_comparison"]):
