@@ -70,6 +70,11 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("function customerDollarChange", html)
         self.assertNotIn('id="customerComparisonBody"', html)
 
+    def test_version_is_visible_beneath_top_left_brand_on_mobile_and_desktop(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<div class="version">VERSION 1.0</div>', html)
+        self.assertNotIn(".brand .eyebrow,.version,.side-foot{display:none}", html)
+
 
 if __name__ == "__main__":
     unittest.main()
