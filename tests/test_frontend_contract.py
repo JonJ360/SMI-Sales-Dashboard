@@ -27,6 +27,13 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("signInWithPassword", html)
         migration = (ROOT / "supabase" / "migrations" / "001_sales_snapshot.sql").read_text(encoding="utf-8")
         self.assertIn("auth.uid", migration)
+    def test_sales_drilldown_month_and_comparison_controls_exist(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="monthSelect"', html)
+        self.assertIn('id="salespersonDrawer"', html)
+        self.assertIn("openSalesperson", html)
+        self.assertIn("vs. prior year", html)
+        self.assertIn("Net Sales", html)
 
 
 if __name__ == "__main__":

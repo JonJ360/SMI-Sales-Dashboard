@@ -20,8 +20,8 @@ DATABASE = "SMI"
 SOURCE = "dbo.SalesTransactions"
 YEARS = (2024, 2025, 2026)
 
-INVOICE_SQL = """
-WITH invoices AS (
+TRANSACTION_SQL = """
+WITH transactions AS (
   SELECT
     LTRIM(RTRIM([SOP Number])) AS sop,
     CAST([Document Date] AS date) AS document_date,
@@ -30,19 +30,20 @@ WITH invoices AS (
     LTRIM(RTRIM([Location Code])) AS location,
     CAST([Subtotal] AS float) AS sales,
     CAST([Extended Cost] AS float) AS extended_cost,
+    LTRIM(RTRIM([SOP Type])) AS kind,
     ROW_NUMBER() OVER (
-      PARTITION BY [SOP Number]
+      PARTITION BY [SOP Type], [SOP Number]
       ORDER BY [Document Date] DESC, [Posted Date] DESC
     ) AS rn
   FROM dbo.SalesTransactions
-  WHERE [SOP Type] = 'Invoice'
+  WHERE [SOP Type] IN ('Invoice', 'Return')
     AND [Posting Status] = 'Posted'
     AND [Void Status] = 'Normal'
     AND [Document Date] >= '2024-01-01'
     AND [Document Date] < DATEADD(day, 1, CAST(GETDATE() AS date))
 )
-SELECT sop, document_date, customer, salesperson, location, sales, extended_cost
-FROM invoices WHERE rn = 1
+SELECT sop, document_date, customer, salesperson, location, sales, extended_cost, kind
+FROM transactions WHERE rn = 1
 ORDER BY document_date, sop
 """
 
@@ -128,29 +129,44 @@ def _date(value: Any) -> dt.date:
     return dt.date.fromisoformat(str(value)[:10])
 
 
-def normalize_invoice(row: Mapping[str, Any]) -> dict[str, Any]:
-    sales = round(float(row.get("sales") or 0), 2)
-    raw_cost = float(row.get("extended_cost") or 0)
-    cost = sales * 0.10 if raw_cost > sales else raw_cost
+def normalize_transaction(row: Mapping[str, Any]) -> dict[str, Any]:
+    kind = str(row.get("kind") or "Invoice").strip().title()
+    sign = -1 if kind == "Return" else 1
+    sales_magnitude = abs(round(float(row.get("sales") or 0), 2))
+    raw_cost_value = row.get("extended_cost") if row.get("extended_cost") is not None else row.get("cost")
+    raw_cost = abs(float(raw_cost_value or 0))
+    cost_magnitude = sales_magnitude * 0.10 if raw_cost > sales_magnitude else raw_cost
+    sales = sign * sales_magnitude
+    cost = sign * round(cost_magnitude, 2)
     return {
         "sop": str(row.get("sop") or "").strip(),
         "date": _date(row.get("date") or row.get("document_date")),
         "customer": str(row.get("customer") or "Unknown").strip() or "Unknown",
         "salesperson": str(row.get("salesperson") or "Unassigned").strip() or "Unassigned",
         "location": str(row.get("location") or "Unassigned").strip() or "Unassigned",
+        "kind": kind,
         "sales": sales,
-        "cost": round(cost, 2),
+        "cost": cost,
         "profit": round(sales - cost, 2),
     }
 
 
+def normalize_invoice(row: Mapping[str, Any]) -> dict[str, Any]:
+    return normalize_transaction({**row, "kind": "Invoice"})
+
+
 def _totals(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     rows = list(rows)
+    invoices = [r for r in rows if r.get("kind", "Invoice") != "Return"]
+    returns = [r for r in rows if r.get("kind") == "Return"]
     return {
         "sales": round(sum(float(r["sales"]) for r in rows), 2),
+        "gross_sales": round(sum(float(r["sales"]) for r in invoices), 2),
+        "returns": round(abs(sum(float(r["sales"]) for r in returns)), 2),
         "cost": round(sum(float(r["cost"]) for r in rows), 2),
         "profit": round(sum(float(r["profit"]) for r in rows), 2),
-        "invoices": len({str(r["sop"]) for r in rows}),
+        "invoices": len({str(r["sop"]) for r in invoices}),
+        "return_docs": len({str(r["sop"]) for r in returns}),
         "customers": len({str(r["customer"]) for r in rows}),
     }
 
@@ -164,41 +180,89 @@ def _rank(rows: list[dict[str, Any]], key: str, limit: int | None = None) -> lis
     return ranked[:limit] if limit else ranked
 
 
+def _safe_prior(date: dt.date) -> dt.date:
+    try:
+        return date.replace(year=date.year - 1)
+    except ValueError:
+        return date.replace(year=date.year - 1, day=28)
+
+
+def _ranking_bundle(period_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "salespeople": _rank(period_rows, "salesperson"),
+        "branches": _rank(period_rows, "location"),
+        "customers": _rank(period_rows, "customer", 25),
+    }
+
+
+def _salesperson_details(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    by_person: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        by_person[row["salesperson"]].append(row)
+    details: dict[str, Any] = {}
+    for name, person_rows in by_person.items():
+        monthly = []
+        for (year, month) in sorted({(r["date"].year, r["date"].month) for r in person_rows}):
+            selected = [r for r in person_rows if r["date"].year == year and r["date"].month == month]
+            monthly.append({"year": year, "month": month, **_totals(selected)})
+        details[name] = {
+            "total": _totals(person_rows),
+            "monthly": monthly,
+            "customers": _rank(person_rows, "customer", 20),
+        }
+    return details
+
+
 def build_snapshot(rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = None) -> dict[str, Any]:
     as_of = as_of or dt.date.today()
     unique: dict[str, dict[str, Any]] = {}
     for source in rows:
-        row = normalize_invoice(source)
+        row = normalize_transaction(source)
+        key = f'{row["kind"]}:{row["sop"]}'
         if row["sop"] and row["date"] <= as_of:
-            unique[row["sop"]] = row
-    invoices = list(unique.values())
-    years = {str(year): _totals([r for r in invoices if r["date"].year == year]) for year in YEARS}
+            unique[key] = row
+    transactions = list(unique.values())
+    years = {str(year): _totals([r for r in transactions if r["date"].year == year]) for year in YEARS}
     monthly = []
+    months: dict[str, Any] = {}
     for year in YEARS:
         for month in range(1, 13):
-            total = _totals([r for r in invoices if r["date"].year == year and r["date"].month == month])
+            current = [r for r in transactions if r["date"].year == year and r["date"].month == month]
+            prior = [r for r in transactions if r["date"].year == year - 1 and r["date"].month == month]
+            total = _totals(current)
             monthly.append({"year": year, "month": month, **total})
-    period_start = choose_period_start("1M", as_of)
-    rolling = [r for r in invoices if period_start <= r["date"] <= as_of]
-    ytd = [r for r in invoices if r["date"].year == as_of.year and r["date"] <= as_of]
-    full = invoices
-    def rankings(period_rows: list[dict[str, Any]]) -> dict[str, Any]:
-        return {
-            "salespeople": _rank(period_rows, "salesperson"),
-            "branches": _rank(period_rows, "location"),
-            "customers": _rank(period_rows, "customer", 25),
-        }
+            months[f"{year}-{month:02d}"] = {
+                "current": total,
+                "prior": _totals(prior),
+                "rankings": _ranking_bundle(current),
+                "prior_rankings": _ranking_bundle(prior),
+            }
+    rolling_start = choose_period_start("1M", as_of)
+    rolling = [r for r in transactions if rolling_start <= r["date"] <= as_of]
+    prior_rolling_start, prior_as_of = _safe_prior(rolling_start), _safe_prior(as_of)
+    prior_rolling = [r for r in transactions if prior_rolling_start <= r["date"] <= prior_as_of]
+    ytd = [r for r in transactions if r["date"].year == as_of.year and r["date"] <= as_of]
+    prior_ytd = [r for r in transactions if dt.date(as_of.year - 1, 1, 1) <= r["date"] <= prior_as_of]
+    full = transactions
+    comparisons = {
+        "1M": {"current": _totals(rolling), "prior": _totals(prior_rolling), "prior_rankings": _ranking_bundle(prior_rolling)},
+        "YTD": {"current": _totals(ytd), "prior": _totals(prior_ytd), "prior_rankings": _ranking_bundle(prior_ytd)},
+        "FULL": {"current": _totals(ytd), "prior": _totals(prior_ytd), "prior_rankings": _ranking_bundle(prior_ytd)},
+    }
     return {
         "as_of": as_of.isoformat(),
         "source": "Dynamics GP SQL",
-        "returns_included": False,
+        "returns_included": True,
         "years": years,
         "periods": {"1M": _totals(rolling), "YTD": _totals(ytd), "FULL": _totals(full)},
+        "comparisons": comparisons,
         "monthly": monthly,
-        "rankings": {"1M": rankings(rolling), "YTD": rankings(ytd), "FULL": rankings(full)},
+        "months": months,
+        "rankings": {"1M": _ranking_bundle(rolling), "YTD": _ranking_bundle(ytd), "FULL": _ranking_bundle(full)},
         "salespeople": _rank(ytd, "salesperson"),
         "branches": _rank(ytd, "location"),
         "customers": _rank(ytd, "customer", 25),
+        "salesperson_details": _salesperson_details(transactions),
     }
 
 
@@ -226,11 +290,11 @@ def build_open_orders(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
 def extract() -> dict[str, Any]:
     with connect() as connection:
         cursor = connection.cursor()
-        cols = ["sop", "document_date", "customer", "salesperson", "location", "sales", "extended_cost"]
-        invoice_rows = [dict(zip(cols, row)) for row in cursor.execute(INVOICE_SQL).fetchall()]
+        cols = ["sop", "document_date", "customer", "salesperson", "location", "sales", "extended_cost", "kind"]
+        transaction_rows = [dict(zip(cols, row)) for row in cursor.execute(TRANSACTION_SQL).fetchall()]
         order_cols = ["sop", "salesperson", "location", "amount"]
         order_rows = [dict(zip(order_cols, row)) for row in cursor.execute(OPEN_ORDER_SQL).fetchall()]
-    snapshot = build_snapshot(invoice_rows)
+    snapshot = build_snapshot(transaction_rows)
     snapshot["open_orders"] = build_open_orders(order_rows)
     snapshot["refreshed_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
     canonical = json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode()

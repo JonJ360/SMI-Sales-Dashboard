@@ -4,14 +4,15 @@ Live, authenticated sales reporting sourced from read-only Dynamics GP SQL. It p
 
 ## Report contract
 
-- Posted, normal invoices only
-- Returns excluded, matching Anthony's current distributed report
-- Sales = `Subtotal`
+- Posted, normal invoices and returns
+- Net sales = invoice `Subtotal` less return `Subtotal`
 - Cost guard = 10% of sales when source extended cost exceeds sales
 - Profit = sales minus guarded cost
-- Invoice count = distinct SOP number
+- Invoice count = distinct invoice SOP number
 - Open orders = remaining subtotal on normal, unposted orders
-- Periods: rolling 30 days (`1M`), YTD, and 2024–2026
+- Periods: rolling 30 days (`1M`), YTD, any selectable month, and 2024–2026 history
+- Prior-year comparisons for rolling 30-day, YTD, month, and salesperson views
+- Click-through salesperson detail with KPIs, trend, returns, and top customers
 
 ## Refresh
 
