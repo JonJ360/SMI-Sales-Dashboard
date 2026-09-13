@@ -46,6 +46,14 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("type:'bar'", html)
         self.assertIn("salespersonMonthlyChart(detail.monthly)", html)
 
+    def test_salesperson_drilldown_has_ytd_sales_and_profit_pies(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="salespersonSalesPie"', html)
+        self.assertIn('id="salespersonProfitPie"', html)
+        self.assertIn("YTD Sales Mix", html)
+        self.assertIn("YTD Profit Mix", html)
+        self.assertIn("renderSalespersonPies(detail.ytd_customers)", html)
+
 
 if __name__ == "__main__":
     unittest.main()
