@@ -54,6 +54,21 @@ class SalesSyncTests(unittest.TestCase):
         self.assertIn("SAM", snap["salesperson_details"])
         self.assertEqual(snap["salesperson_details"]["SAM"]["monthly"][1]["returns"], 50.0)
 
+    def test_customer_comparison_and_drilldown_exist(self):
+        rows = [
+            normalize_transaction({"sop":"A0","date":dt.date(2025,8,2),"customer":"A","salesperson":"SAM","location":"FARGO","sales":500,"extended_cost":300,"kind":"Invoice"}),
+            normalize_transaction({"sop":"B0","date":dt.date(2025,8,2),"customer":"B","salesperson":"RICK","location":"FARGO","sales":400,"extended_cost":240,"kind":"Invoice"}),
+            normalize_transaction({"sop":"A1","date":dt.date(2026,8,2),"customer":"A","salesperson":"SAM","location":"FARGO","sales":100,"extended_cost":60,"kind":"Invoice"}),
+            normalize_transaction({"sop":"B1","date":dt.date(2026,8,2),"customer":"B","salesperson":"RICK","location":"FARGO","sales":600,"extended_cost":360,"kind":"Invoice"}),
+        ]
+        snap = build_snapshot(rows, as_of=dt.date(2026,9,13))
+        comparison = snap["months"]["2026-08"]["customer_comparison"]
+        self.assertEqual([r["name"] for r in comparison], ["A", "B"])
+        self.assertEqual(comparison[0]["prior_sales"], 500.0)
+        self.assertEqual(comparison[0]["current_sales"], 100.0)
+        self.assertIn("A", snap["customer_details"])
+        self.assertEqual(snap["customer_details"]["A"]["salespeople"][0]["name"], "SAM")
+
     def test_one_month_rankings_exclude_older_sales(self):
         rows = [
             {"sop":"OLD","date":dt.date(2026, 7, 1),"customer":"OLD CO","salesperson":"OLD","location":"GF","sales":900.0,"extended_cost":500.0},

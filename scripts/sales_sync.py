@@ -213,6 +213,42 @@ def _salesperson_details(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return details
 
 
+def _customer_details(rows: list[dict[str, Any]], included_names: set[str]) -> dict[str, Any]:
+    by_customer: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        if row["customer"] in included_names:
+            by_customer[row["customer"]].append(row)
+    details: dict[str, Any] = {}
+    for name, customer_rows in by_customer.items():
+        monthly = []
+        for (year, month) in sorted({(r["date"].year, r["date"].month) for r in customer_rows}):
+            selected = [r for r in customer_rows if r["date"].year == year and r["date"].month == month]
+            monthly.append({"year": year, "month": month, **_totals(selected)})
+        details[name] = {
+            "total": _totals(customer_rows),
+            "monthly": monthly,
+            "salespeople": _rank(customer_rows, "salesperson", 20),
+        }
+    return details
+
+
+def _customer_comparison(current: list[dict[str, Any]], prior: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    current_by_name = {item["name"]: item for item in _rank(current, "customer")}
+    result = []
+    for prior_item in _rank(prior, "customer", 10):
+        current_item = current_by_name.get(prior_item["name"], {})
+        result.append({
+            "name": prior_item["name"],
+            "prior_sales": prior_item["sales"],
+            "current_sales": current_item.get("sales", 0),
+            "prior_profit": prior_item["profit"],
+            "current_profit": current_item.get("profit", 0),
+            "prior_invoices": prior_item["invoices"],
+            "current_invoices": current_item.get("invoices", 0),
+        })
+    return result
+
+
 def build_snapshot(rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = None) -> dict[str, Any]:
     as_of = as_of or dt.date.today()
     unique: dict[str, dict[str, Any]] = {}
@@ -236,6 +272,7 @@ def build_snapshot(rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = No
                 "prior": _totals(prior),
                 "rankings": _ranking_bundle(current),
                 "prior_rankings": _ranking_bundle(prior),
+                "customer_comparison": _customer_comparison(current, prior),
             }
     rolling_start = choose_period_start("1M", as_of)
     rolling = [r for r in transactions if rolling_start <= r["date"] <= as_of]
@@ -245,10 +282,19 @@ def build_snapshot(rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = No
     prior_ytd = [r for r in transactions if dt.date(as_of.year - 1, 1, 1) <= r["date"] <= prior_as_of]
     full = transactions
     comparisons = {
-        "1M": {"current": _totals(rolling), "prior": _totals(prior_rolling), "prior_rankings": _ranking_bundle(prior_rolling)},
-        "YTD": {"current": _totals(ytd), "prior": _totals(prior_ytd), "prior_rankings": _ranking_bundle(prior_ytd)},
-        "FULL": {"current": _totals(ytd), "prior": _totals(prior_ytd), "prior_rankings": _ranking_bundle(prior_ytd)},
+        "1M": {"current": _totals(rolling), "prior": _totals(prior_rolling), "prior_rankings": _ranking_bundle(prior_rolling), "customer_comparison": _customer_comparison(rolling, prior_rolling)},
+        "YTD": {"current": _totals(ytd), "prior": _totals(prior_ytd), "prior_rankings": _ranking_bundle(prior_ytd), "customer_comparison": _customer_comparison(ytd, prior_ytd)},
+        "FULL": {"current": _totals(ytd), "prior": _totals(prior_ytd), "prior_rankings": _ranking_bundle(prior_ytd), "customer_comparison": _customer_comparison(ytd, prior_ytd)},
     }
+    period_rankings = {"1M": _ranking_bundle(rolling), "YTD": _ranking_bundle(ytd), "FULL": _ranking_bundle(full)}
+    detail_customers: set[str] = set()
+    for month_data in months.values():
+        for group in (month_data["rankings"]["customers"], month_data["prior_rankings"]["customers"], month_data["customer_comparison"]):
+            detail_customers.update(item["name"] for item in group)
+    for period in ("1M", "YTD", "FULL"):
+        detail_customers.update(item["name"] for item in period_rankings[period]["customers"])
+        detail_customers.update(item["name"] for item in comparisons[period]["prior_rankings"]["customers"])
+        detail_customers.update(item["name"] for item in comparisons[period]["customer_comparison"])
     return {
         "as_of": as_of.isoformat(),
         "source": "Dynamics GP SQL",
@@ -258,11 +304,12 @@ def build_snapshot(rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = No
         "comparisons": comparisons,
         "monthly": monthly,
         "months": months,
-        "rankings": {"1M": _ranking_bundle(rolling), "YTD": _ranking_bundle(ytd), "FULL": _ranking_bundle(full)},
+        "rankings": period_rankings,
         "salespeople": _rank(ytd, "salesperson"),
         "branches": _rank(ytd, "location"),
         "customers": _rank(ytd, "customer", 25),
         "salesperson_details": _salesperson_details(transactions),
+        "customer_details": _customer_details(transactions, detail_customers),
     }
 
 

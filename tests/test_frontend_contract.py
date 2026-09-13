@@ -25,6 +25,7 @@ class FrontendContractTests(unittest.TestCase):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
         self.assertIn("smi_sales_current_snapshot", html)
         self.assertIn("signInWithPassword", html)
+        self.assertIn('<option value="ben@structuralfab.com">Ben</option>', html)
         migration = (ROOT / "supabase" / "migrations" / "001_sales_snapshot.sql").read_text(encoding="utf-8")
         self.assertIn("auth.uid", migration)
     def test_sales_drilldown_month_and_comparison_controls_exist(self):
@@ -34,6 +35,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("openSalesperson", html)
         self.assertIn("vs. prior year", html)
         self.assertIn("Net Sales", html)
+        self.assertIn('id="customerDrawer"', html)
+        self.assertIn("openCustomer", html)
+        self.assertIn('id="customerComparisonBody"', html)
 
 
 if __name__ == "__main__":
