@@ -57,6 +57,11 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("renderSalespersonPies(detail.monthly)", html)
         self.assertNotIn("Positive net by customer", html)
 
+    def test_salesperson_pies_appear_before_customer_section(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn("#salespersonDrawer .drawer-pies{order:1}", html)
+        self.assertIn("#salespersonDrawer .drawer-grid{order:2}", html)
+
 
 if __name__ == "__main__":
     unittest.main()
