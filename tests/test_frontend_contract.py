@@ -39,6 +39,13 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("openCustomer", html)
         self.assertIn('id="customerComparisonBody"', html)
 
+    def test_salesperson_drilldown_uses_month_over_month_columns(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn("Month-over-Month Net Sales", html)
+        self.assertIn("function salespersonMonthlyChart", html)
+        self.assertIn("type:'bar'", html)
+        self.assertIn("salespersonMonthlyChart(detail.monthly)", html)
+
 
 if __name__ == "__main__":
     unittest.main()
