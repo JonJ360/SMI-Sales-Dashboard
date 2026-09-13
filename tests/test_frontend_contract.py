@@ -72,8 +72,15 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_version_is_visible_beneath_top_left_brand_on_mobile_and_desktop(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
-        self.assertIn('<div class="version">VERSION 1.0</div>', html)
+        self.assertIn('<div class="version">VERSION 1.1</div>', html)
         self.assertNotIn(".brand .eyebrow,.version,.side-foot{display:none}", html)
+
+    def test_top_customer_mobile_cards_show_all_dollar_columns(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn("#customers tbody tr{display:grid", html)
+        self.assertIn('data-label="Last Year"', html)
+        self.assertIn('data-label="This Year"', html)
+        self.assertIn('data-label="Dollar Change"', html)
 
 
 if __name__ == "__main__":
