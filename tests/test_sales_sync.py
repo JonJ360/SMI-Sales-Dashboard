@@ -53,8 +53,7 @@ class SalesSyncTests(unittest.TestCase):
         self.assertEqual(snap["comparisons"]["YTD"]["prior_rankings"]["salespeople"][0]["sales"], 200.0)
         self.assertIn("SAM", snap["salesperson_details"])
         self.assertEqual(snap["salesperson_details"]["SAM"]["monthly"][1]["returns"], 50.0)
-        self.assertEqual(snap["salesperson_details"]["SAM"]["ytd_customers"][0]["name"], "A")
-        self.assertEqual(snap["salesperson_details"]["SAM"]["ytd_customers"][0]["profit"], 100.0)
+        self.assertNotIn("ytd_customers", snap["salesperson_details"]["SAM"])
 
     def test_customer_comparison_and_drilldown_exist(self):
         rows = [

@@ -50,9 +50,12 @@ class FrontendContractTests(unittest.TestCase):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
         self.assertIn('id="salespersonSalesPie"', html)
         self.assertIn('id="salespersonProfitPie"', html)
-        self.assertIn("YTD Sales Mix", html)
-        self.assertIn("YTD Profit Mix", html)
-        self.assertIn("renderSalespersonPies(detail.ytd_customers)", html)
+        self.assertIn("YTD Sales Total", html)
+        self.assertIn("YTD Profit Total", html)
+        self.assertIn("Current YTD", html)
+        self.assertIn("Prior YTD", html)
+        self.assertIn("renderSalespersonPies(detail.monthly)", html)
+        self.assertNotIn("Positive net by customer", html)
 
 
 if __name__ == "__main__":

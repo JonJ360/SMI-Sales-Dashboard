@@ -195,13 +195,12 @@ def _ranking_bundle(period_rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _salesperson_details(rows: list[dict[str, Any]], as_of: dt.date) -> dict[str, Any]:
+def _salesperson_details(rows: list[dict[str, Any]]) -> dict[str, Any]:
     by_person: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         by_person[row["salesperson"]].append(row)
     details: dict[str, Any] = {}
     for name, person_rows in by_person.items():
-        ytd_rows = [r for r in person_rows if r["date"].year == as_of.year and r["date"] <= as_of]
         monthly = []
         for (year, month) in sorted({(r["date"].year, r["date"].month) for r in person_rows}):
             selected = [r for r in person_rows if r["date"].year == year and r["date"].month == month]
@@ -210,7 +209,6 @@ def _salesperson_details(rows: list[dict[str, Any]], as_of: dt.date) -> dict[str
             "total": _totals(person_rows),
             "monthly": monthly,
             "customers": _rank(person_rows, "customer", 20),
-            "ytd_customers": _rank(ytd_rows, "customer"),
         }
     return details
 
@@ -310,7 +308,7 @@ def build_snapshot(rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = No
         "salespeople": _rank(ytd, "salesperson"),
         "branches": _rank(ytd, "location"),
         "customers": _rank(ytd, "customer", 25),
-        "salesperson_details": _salesperson_details(transactions, as_of),
+        "salesperson_details": _salesperson_details(transactions),
         "customer_details": _customer_details(transactions, detail_customers),
     }
 
