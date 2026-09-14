@@ -68,22 +68,32 @@ FROM orders WHERE rn = 1 AND amount > 0
 ORDER BY sop
 """
 
-DAILY_ACTIVITY_SQL = """
-SELECT
-  COUNT(DISTINCT CASE
-    WHEN [SOP Type] = 'Order'
-      AND [Void Status] = 'Normal'
-      AND CAST([Created Date] AS date) = CAST(GETDATE() AS date)
-    THEN LTRIM(RTRIM([SOP Number])) END) AS tickets_written,
-  COUNT(DISTINCT CASE
-    WHEN [SOP Type] = 'Invoice'
-      AND [Posting Status] = 'Posted'
-      AND [Void Status] = 'Normal'
-      AND CAST([Posted Date] AS date) = CAST(GETDATE() AS date)
-    THEN LTRIM(RTRIM([SOP Number])) END) AS invoices_posted
-FROM dbo.SalesTransactions
+TODAY_ACTIVITY_SQL = """
+WITH documents AS (
+  SELECT
+    LTRIM(RTRIM([SOP Type])) AS sop_type,
+    LTRIM(RTRIM([Posting Status])) AS posting_status,
+    LTRIM(RTRIM([SOP Number])) AS sop,
+    CAST([Created Date] AS date) AS created_date,
+    CAST([Posted Date] AS date) AS posted_date,
+    CAST([Subtotal] AS decimal(19,2)) AS amount,
+    ROW_NUMBER() OVER (
+      PARTITION BY [SOP Type], [SOP Number]
+      ORDER BY [Document Date] DESC, [Posted Date] DESC, [Modified Date] DESC
+    ) AS rn
+  FROM dbo.SalesTransactions
+  WHERE [SOP Type] IN ('Order', 'Invoice')
+    AND [Void Status] = 'Normal'
+)
+SELECT 'tickets' AS metric, COUNT(*) AS document_count, COALESCE(SUM(amount), 0) AS amount
+FROM documents
+WHERE rn = 1 AND sop_type = 'Order' AND created_date = CAST(GETDATE() AS date)
+UNION ALL
+SELECT 'invoices', COUNT(*), COALESCE(SUM(amount), 0)
+FROM documents
+WHERE rn = 1 AND sop_type = 'Invoice' AND posting_status = 'Posted'
+  AND posted_date = CAST(GETDATE() AS date)
 """
-
 
 class _CredentialW(ctypes.Structure):
     _fields_ = [
@@ -403,12 +413,16 @@ def build_open_orders(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     return {"amount": round(sum(r["amount"] for r in orders), 2), "orders": len(orders), "branches": group("location"), "salespeople": group("salesperson")}
 
 
-def build_daily_activity(row: Mapping[str, Any]) -> dict[str, int]:
-    return {
-        "tickets_written": int(row.get("tickets_written") or 0),
-        "invoices_posted": int(row.get("invoices_posted") or 0),
-    }
-
+def build_today_activity(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    activity = {"tickets": {"count": 0, "amount": 0.0}, "invoices": {"count": 0, "amount": 0.0}}
+    for row in rows:
+        metric = str(row.get("metric") or "").strip().lower()
+        if metric in activity:
+            activity[metric] = {
+                "count": int(row.get("count") or 0),
+                "amount": round(float(row.get("amount") or 0), 2),
+            }
+    return activity
 
 def extract() -> dict[str, Any]:
     with connect() as connection:
@@ -417,10 +431,15 @@ def extract() -> dict[str, Any]:
         transaction_rows = [dict(zip(cols, row)) for row in cursor.execute(TRANSACTION_SQL).fetchall()]
         order_cols = ["sop", "salesperson", "location", "amount"]
         order_rows = [dict(zip(order_cols, row)) for row in cursor.execute(OPEN_ORDER_SQL).fetchall()]
-        activity_row = cursor.execute(DAILY_ACTIVITY_SQL).fetchone()
+        activity_cols = ["metric", "count", "amount"]
+        activity_rows = [dict(zip(activity_cols, row)) for row in cursor.execute(TODAY_ACTIVITY_SQL).fetchall()]
     snapshot = build_snapshot(transaction_rows)
     snapshot["open_orders"] = build_open_orders(order_rows)
-    snapshot["today"] = build_daily_activity(dict(zip(("tickets_written", "invoices_posted"), activity_row)))
+    snapshot["today_activity"] = build_today_activity(activity_rows)
+    snapshot["today"] = {
+        "tickets_written": snapshot["today_activity"]["tickets"]["count"],
+        "invoices_posted": snapshot["today_activity"]["invoices"]["count"],
+    }
     snapshot["refreshed_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
     canonical = json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode()
     snapshot["sha256"] = hashlib.sha256(canonical).hexdigest()
@@ -437,7 +456,7 @@ def main() -> int:
     temp = path.with_suffix(path.suffix + ".tmp")
     temp.write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
     temp.replace(path)
-    print(json.dumps({"output": str(path.resolve()), "as_of": snapshot["as_of"], "sha256": snapshot["sha256"], "ytd_sales": snapshot["periods"]["YTD"]["sales"], "open_orders": snapshot["open_orders"]["amount"]}, indent=2))
+    print(json.dumps({"output": str(path.resolve()), "as_of": snapshot["as_of"], "sha256": snapshot["sha256"], "ytd_sales": snapshot["periods"]["YTD"]["sales"], "open_orders": snapshot["open_orders"]["amount"], "today_activity": snapshot["today_activity"]}, indent=2))
     return 0
 
 

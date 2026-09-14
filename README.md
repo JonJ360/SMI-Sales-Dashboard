@@ -14,7 +14,8 @@ Live, authenticated sales reporting sourced from read-only Dynamics GP SQL. It p
 - Like-for-like comparisons: prior-year rolling 30-day, YTD, and month; the 2024–2026 window compares with 2021–2023 through the same month/day cutoff
 - All-salespeople report shows current-period sales, comparable prior-period sales, and dollar change
 - Click-through salesperson detail uses the selected period for customer rankings and totals
-- Daily activity: distinct normal orders by `Created Date` (Tickets Written Today) and distinct posted, normal invoices by `Posted Date` (Invoices Posted Today)
+- Tickets written today = distinct normal orders by GP `Created Date`, with `Subtotal` dollars
+- Invoices posted today = distinct normal posted invoices by GP `Posted Date`, with `Subtotal` dollars
 
 ## Refresh
 

@@ -5,6 +5,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class FrontendContractTests(unittest.TestCase):
+    def test_today_ticket_and_posted_invoice_cards_show_counts_and_dollars(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+        for token in ("Tickets Written Today", "Invoices Posted Today", 'id="ticketsTodayKpi"', 'id="invoicesTodayKpi"', "today_activity"):
+            self.assertIn(token, html)
+
     def test_asset_tracker_blue_tokens_and_one_month_control_exist(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
         for token in ("#E9ECF1", "#FFFFFF", "#222A33", "#2E6FD9", "#1F5AB8"):
@@ -40,9 +45,16 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("Invoices Posted Today", html)
         self.assertIn('id="ticketsTodayKpi"', html)
         self.assertIn('id="invoicesTodayKpi"', html)
-        self.assertIn("const today=state.data.today", html)
-        self.assertIn("ticketsTodayKpi.textContent=number(today.tickets_written)", html)
-        self.assertIn("invoicesTodayKpi.textContent=number(today.invoices_posted)", html)
+        self.assertIn("legacy=state.data.today||{}", html)
+        self.assertIn("a=state.data.today_activity", html)
+        self.assertIn("count:legacy.tickets_written||0", html)
+        self.assertIn("count:legacy.invoices_posted||0", html)
+        self.assertIn("ticketsTodayKpi.textContent=number(a.tickets.count)", html)
+        self.assertIn("invoicesTodayKpi.textContent=number(a.invoices.count)", html)
+        self.assertIn("money(a.tickets.amount)", html)
+        self.assertIn("money(a.invoices.amount)", html)
+        self.assertEqual(html.count('id="ticketsTodayKpi"'), 1)
+        self.assertEqual(html.count('id="invoicesTodayKpi"'), 1)
 
     def test_sales_drilldown_month_and_comparison_controls_exist(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")

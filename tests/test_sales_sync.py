@@ -3,9 +3,9 @@ import unittest
 from unittest.mock import patch
 
 from scripts.sales_sync import (
-    DAILY_ACTIVITY_SQL,
+    TODAY_ACTIVITY_SQL,
     TRANSACTION_SQL,
-    build_daily_activity,
+    build_today_activity,
     build_snapshot,
     choose_period_start,
     extract,
@@ -15,6 +15,21 @@ from scripts.sales_sync import (
 
 
 class SalesSyncTests(unittest.TestCase):
+    def test_today_activity_sql_uses_distinct_documents_and_separate_gp_dates(self):
+        self.assertIn("PARTITION BY [SOP Type], [SOP Number]", TODAY_ACTIVITY_SQL)
+        self.assertIn("sop_type = 'Order' AND created_date = CAST(GETDATE() AS date)", TODAY_ACTIVITY_SQL)
+        self.assertIn("sop_type = 'Invoice' AND posting_status = 'Posted'", TODAY_ACTIVITY_SQL)
+        self.assertIn("posted_date = CAST(GETDATE() AS date)", TODAY_ACTIVITY_SQL)
+        self.assertIn("CAST([Subtotal] AS decimal(19,2))", TODAY_ACTIVITY_SQL)
+
+    def test_today_activity_keeps_ticket_and_posted_invoice_counts_and_dollars(self):
+        activity = build_today_activity([
+            {"metric": "tickets", "count": 12, "amount": 3456.78},
+            {"metric": "invoices", "count": 7, "amount": 8901.23},
+        ])
+        self.assertEqual(activity["tickets"], {"count": 12, "amount": 3456.78})
+        self.assertEqual(activity["invoices"], {"count": 7, "amount": 8901.23})
+
     def test_one_month_period_is_rolling_30_days(self):
         self.assertEqual(choose_period_start("1M", dt.date(2026, 9, 13)), dt.date(2026, 8, 15))
 
@@ -154,15 +169,21 @@ class SalesSyncTests(unittest.TestCase):
         self.assertIn("[Document Date] >= '2021-01-01'", TRANSACTION_SQL)
 
     def test_daily_activity_uses_created_date_for_orders_and_posted_date_for_invoices(self):
-        self.assertIn("[SOP Type] = 'Order'", DAILY_ACTIVITY_SQL)
-        self.assertIn("CAST([Created Date] AS date) = CAST(GETDATE() AS date)", DAILY_ACTIVITY_SQL)
-        self.assertIn("[SOP Type] = 'Invoice'", DAILY_ACTIVITY_SQL)
-        self.assertIn("[Posting Status] = 'Posted'", DAILY_ACTIVITY_SQL)
-        self.assertIn("CAST([Posted Date] AS date) = CAST(GETDATE() AS date)", DAILY_ACTIVITY_SQL)
-        self.assertIn("COUNT(DISTINCT", DAILY_ACTIVITY_SQL)
+        self.assertIn("[SOP Type] IN ('Order', 'Invoice')", TODAY_ACTIVITY_SQL)
+        self.assertIn("[Void Status] = 'Normal'", TODAY_ACTIVITY_SQL)
+        self.assertIn("created_date = CAST(GETDATE() AS date)", TODAY_ACTIVITY_SQL)
+        self.assertIn("posting_status = 'Posted'", TODAY_ACTIVITY_SQL)
+        self.assertIn("posted_date = CAST(GETDATE() AS date)", TODAY_ACTIVITY_SQL)
+        self.assertIn("PARTITION BY [SOP Type], [SOP Number]", TODAY_ACTIVITY_SQL)
         self.assertEqual(
-            build_daily_activity({"tickets_written": 7, "invoices_posted": 5}),
-            {"tickets_written": 7, "invoices_posted": 5},
+            build_today_activity([
+                {"metric": "tickets", "count": 7, "amount": 1234.56},
+                {"metric": "invoices", "count": 5, "amount": 789.01},
+            ]),
+            {
+                "tickets": {"count": 7, "amount": 1234.56},
+                "invoices": {"count": 5, "amount": 789.01},
+            },
         )
 
     def test_extract_includes_daily_activity_in_snapshot(self):
@@ -172,10 +193,9 @@ class SalesSyncTests(unittest.TestCase):
                 return self
 
             def fetchall(self):
+                if self.sql == TODAY_ACTIVITY_SQL:
+                    return [("tickets", 7, 1234.56), ("invoices", 5, 789.01)]
                 return []
-
-            def fetchone(self):
-                return (7, 5)
 
         class FakeConnection:
             def __enter__(self):
@@ -190,7 +210,14 @@ class SalesSyncTests(unittest.TestCase):
         with patch("scripts.sales_sync.connect", return_value=FakeConnection()):
             snapshot = extract()
 
-        self.assertEqual(snapshot["today"], {"tickets_written": 7, "invoices_posted": 5})
+        self.assertEqual(snapshot["today_activity"], {
+            "tickets": {"count": 7, "amount": 1234.56},
+            "invoices": {"count": 5, "amount": 789.01},
+        })
+        self.assertEqual(snapshot["today"], {
+            "tickets_written": 7,
+            "invoices_posted": 5,
+        })
 
     def test_customer_watchlist_uses_prior_year_top_25(self):
         rows = []
