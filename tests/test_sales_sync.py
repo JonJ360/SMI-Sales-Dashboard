@@ -1,7 +1,17 @@
 import datetime as dt
 import unittest
+from unittest.mock import patch
 
-from scripts.sales_sync import choose_period_start, normalize_invoice, normalize_transaction, build_snapshot
+from scripts.sales_sync import (
+    DAILY_ACTIVITY_SQL,
+    TRANSACTION_SQL,
+    build_daily_activity,
+    build_snapshot,
+    choose_period_start,
+    extract,
+    normalize_invoice,
+    normalize_transaction,
+)
 
 
 class SalesSyncTests(unittest.TestCase):
@@ -77,6 +87,110 @@ class SalesSyncTests(unittest.TestCase):
         ]
         snap = build_snapshot(rows, as_of=dt.date(2026, 9, 13))
         self.assertEqual([r["name"] for r in snap["rankings"]["1M"]["salespeople"]], ["NEW"])
+
+    def test_salesperson_customer_detail_follows_selected_period(self):
+        rows = [
+            {"sop":"OLD","date":dt.date(2026, 6, 1),"customer":"OLD CUSTOMER","salesperson":"SAM","location":"FARGO","sales":900.0,"extended_cost":500.0},
+            {"sop":"AUG","date":dt.date(2026, 8, 20),"customer":"AUGUST CUSTOMER","salesperson":"SAM","location":"FARGO","sales":200.0,"extended_cost":120.0},
+            {"sop":"SEP","date":dt.date(2026, 9, 10),"customer":"SEPTEMBER CUSTOMER","salesperson":"SAM","location":"FARGO","sales":100.0,"extended_cost":60.0},
+        ]
+
+        detail = build_snapshot(rows, as_of=dt.date(2026, 9, 13))["salesperson_details"]["SAM"]
+
+        self.assertEqual(detail["periods"]["1M"]["total"]["sales"], 300.0)
+        self.assertEqual(
+            [customer["name"] for customer in detail["periods"]["1M"]["customers"]],
+            ["AUGUST CUSTOMER", "SEPTEMBER CUSTOMER"],
+        )
+        self.assertEqual(detail["months"]["2026-08"]["total"]["sales"], 200.0)
+        self.assertEqual(
+            [customer["name"] for customer in detail["months"]["2026-08"]["customers"]],
+            ["AUGUST CUSTOMER"],
+        )
+        self.assertEqual(detail["periods"]["FULL"]["total"]["sales"], 1200.0)
+
+    def test_salesperson_comparisons_follow_rolling_ytd_month_and_three_year_periods(self):
+        rows = [
+            {"sop":"P30","date":dt.date(2025, 8, 20),"customer":"A","salesperson":"SAM","location":"FARGO","sales":40.0,"extended_cost":20.0},
+            {"sop":"C30","date":dt.date(2026, 8, 20),"customer":"A","salesperson":"SAM","location":"FARGO","sales":100.0,"extended_cost":60.0},
+            {"sop":"PM","date":dt.date(2025, 7, 10),"customer":"A","salesperson":"SAM","location":"FARGO","sales":300.0,"extended_cost":180.0},
+            {"sop":"CM","date":dt.date(2026, 7, 10),"customer":"A","salesperson":"SAM","location":"FARGO","sales":500.0,"extended_cost":300.0},
+            {"sop":"P3Y","date":dt.date(2021, 3, 1),"customer":"A","salesperson":"SAM","location":"FARGO","sales":700.0,"extended_cost":420.0},
+            {"sop":"P3YLATE","date":dt.date(2023, 12, 1),"customer":"A","salesperson":"SAM","location":"FARGO","sales":9000.0,"extended_cost":5000.0},
+            {"sop":"C3Y","date":dt.date(2024, 3, 1),"customer":"A","salesperson":"SAM","location":"FARGO","sales":1000.0,"extended_cost":600.0},
+        ]
+
+        snap = build_snapshot(rows, as_of=dt.date(2026, 9, 13))
+
+        rolling = snap["comparisons"]["1M"]["salesperson_comparison"][0]
+        self.assertEqual((rolling["current_sales"], rolling["prior_sales"], rolling["dollar_change"]), (100.0, 40.0, 60.0))
+        ytd = snap["comparisons"]["YTD"]["salesperson_comparison"][0]
+        self.assertEqual((ytd["current_sales"], ytd["prior_sales"], ytd["dollar_change"]), (600.0, 340.0, 260.0))
+        month = snap["months"]["2026-07"]["salesperson_comparison"][0]
+        self.assertEqual((month["current_sales"], month["prior_sales"], month["dollar_change"]), (500.0, 300.0, 200.0))
+        full = snap["comparisons"]["FULL"]["salesperson_comparison"][0]
+        self.assertEqual((full["current_sales"], full["prior_sales"], full["dollar_change"]), (1940.0, 700.0, 1240.0))
+        self.assertEqual(snap["periods"]["FULL"]["sales"], 1940.0)
+        self.assertEqual(snap["comparisons"]["FULL"]["prior"]["sales"], 700.0)
+
+    def test_three_year_comparison_handles_leap_day_like_for_like(self):
+        rows = [
+            {"sop":"PRIOR","date":dt.date(2021, 2, 28),"customer":"A","salesperson":"SAM","location":"FARGO","sales":25.0,"extended_cost":15.0},
+            {"sop":"CURRENT","date":dt.date(2024, 2, 29),"customer":"A","salesperson":"SAM","location":"FARGO","sales":50.0,"extended_cost":30.0},
+        ]
+        snap = build_snapshot(rows, as_of=dt.date(2024, 2, 29))
+        self.assertEqual(snap["comparisons"]["FULL"]["prior"]["sales"], 25.0)
+
+    def test_three_year_comparison_source_does_not_expand_visible_trend_beyond_three_years(self):
+        rows = [
+            {"sop":"PRIOR","date":dt.date(2021, 2, 28),"customer":"A","salesperson":"SAM","location":"FARGO","sales":25.0,"extended_cost":15.0},
+            {"sop":"CURRENT","date":dt.date(2024, 2, 29),"customer":"A","salesperson":"SAM","location":"FARGO","sales":50.0,"extended_cost":30.0},
+        ]
+        snap = build_snapshot(rows, as_of=dt.date(2024, 2, 29))
+        self.assertEqual([row["year"] for row in snap["salesperson_details"]["SAM"]["monthly"]], [2024])
+        self.assertEqual([row["year"] for row in snap["customer_details"]["A"]["monthly"]], [2024])
+
+    def test_transaction_source_includes_prior_three_year_window(self):
+        self.assertIn("[Document Date] >= '2021-01-01'", TRANSACTION_SQL)
+
+    def test_daily_activity_uses_created_date_for_orders_and_posted_date_for_invoices(self):
+        self.assertIn("[SOP Type] = 'Order'", DAILY_ACTIVITY_SQL)
+        self.assertIn("CAST([Created Date] AS date) = CAST(GETDATE() AS date)", DAILY_ACTIVITY_SQL)
+        self.assertIn("[SOP Type] = 'Invoice'", DAILY_ACTIVITY_SQL)
+        self.assertIn("[Posting Status] = 'Posted'", DAILY_ACTIVITY_SQL)
+        self.assertIn("CAST([Posted Date] AS date) = CAST(GETDATE() AS date)", DAILY_ACTIVITY_SQL)
+        self.assertIn("COUNT(DISTINCT", DAILY_ACTIVITY_SQL)
+        self.assertEqual(
+            build_daily_activity({"tickets_written": 7, "invoices_posted": 5}),
+            {"tickets_written": 7, "invoices_posted": 5},
+        )
+
+    def test_extract_includes_daily_activity_in_snapshot(self):
+        class FakeCursor:
+            def execute(self, sql):
+                self.sql = sql
+                return self
+
+            def fetchall(self):
+                return []
+
+            def fetchone(self):
+                return (7, 5)
+
+        class FakeConnection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def cursor(self):
+                return FakeCursor()
+
+        with patch("scripts.sales_sync.connect", return_value=FakeConnection()):
+            snapshot = extract()
+
+        self.assertEqual(snapshot["today"], {"tickets_written": 7, "invoices_posted": 5})
 
     def test_customer_watchlist_uses_prior_year_top_25(self):
         rows = []

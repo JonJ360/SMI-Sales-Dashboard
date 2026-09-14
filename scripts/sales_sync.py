@@ -39,7 +39,7 @@ WITH transactions AS (
   WHERE [SOP Type] IN ('Invoice', 'Return')
     AND [Posting Status] = 'Posted'
     AND [Void Status] = 'Normal'
-    AND [Document Date] >= '2024-01-01'
+    AND [Document Date] >= '2021-01-01'
     AND [Document Date] < DATEADD(day, 1, CAST(GETDATE() AS date))
 )
 SELECT sop, document_date, customer, salesperson, location, sales, extended_cost, kind
@@ -66,6 +66,22 @@ WITH orders AS (
 SELECT sop, salesperson, location, amount
 FROM orders WHERE rn = 1 AND amount > 0
 ORDER BY sop
+"""
+
+DAILY_ACTIVITY_SQL = """
+SELECT
+  COUNT(DISTINCT CASE
+    WHEN [SOP Type] = 'Order'
+      AND [Void Status] = 'Normal'
+      AND CAST([Created Date] AS date) = CAST(GETDATE() AS date)
+    THEN LTRIM(RTRIM([SOP Number])) END) AS tickets_written,
+  COUNT(DISTINCT CASE
+    WHEN [SOP Type] = 'Invoice'
+      AND [Posting Status] = 'Posted'
+      AND [Void Status] = 'Normal'
+      AND CAST([Posted Date] AS date) = CAST(GETDATE() AS date)
+    THEN LTRIM(RTRIM([SOP Number])) END) AS invoices_posted
+FROM dbo.SalesTransactions
 """
 
 
@@ -180,11 +196,15 @@ def _rank(rows: list[dict[str, Any]], key: str, limit: int | None = None) -> lis
     return ranked[:limit] if limit else ranked
 
 
-def _safe_prior(date: dt.date) -> dt.date:
+def _shift_year(value: dt.date, years: int) -> dt.date:
     try:
-        return date.replace(year=date.year - 1)
+        return value.replace(year=value.year - years)
     except ValueError:
-        return date.replace(year=date.year - 1, day=28)
+        return value.replace(year=value.year - years, day=28)
+
+
+def _safe_prior(value: dt.date) -> dt.date:
+    return _shift_year(value, 1)
 
 
 def _ranking_bundle(period_rows: list[dict[str, Any]], prior_rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -200,20 +220,31 @@ def _ranking_bundle(period_rows: list[dict[str, Any]], prior_rows: list[dict[str
     }
 
 
-def _salesperson_details(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _salesperson_details(
+    rows: list[dict[str, Any]],
+    period_rows: Mapping[str, list[dict[str, Any]]],
+    month_rows: Mapping[str, list[dict[str, Any]]],
+) -> dict[str, Any]:
     by_person: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         by_person[row["salesperson"]].append(row)
     details: dict[str, Any] = {}
     for name, person_rows in by_person.items():
+        trend_rows = [row for row in person_rows if row["date"].year in YEARS]
         monthly = []
-        for (year, month) in sorted({(r["date"].year, r["date"].month) for r in person_rows}):
-            selected = [r for r in person_rows if r["date"].year == year and r["date"].month == month]
+        for (year, month) in sorted({(r["date"].year, r["date"].month) for r in trend_rows}):
+            selected = [r for r in trend_rows if r["date"].year == year and r["date"].month == month]
             monthly.append({"year": year, "month": month, **_totals(selected)})
+        def scoped_detail(selected: list[dict[str, Any]]) -> dict[str, Any]:
+            selected = [row for row in selected if row["salesperson"] == name]
+            return {"total": _totals(selected), "customers": _rank(selected, "customer", 20)}
+
         details[name] = {
             "total": _totals(person_rows),
             "monthly": monthly,
             "customers": _rank(person_rows, "customer", 20),
+            "periods": {period: scoped_detail(selected) for period, selected in period_rows.items()},
+            "months": {month: scoped_detail(selected) for month, selected in month_rows.items()},
         }
     return details
 
@@ -225,9 +256,10 @@ def _customer_details(rows: list[dict[str, Any]], included_names: set[str]) -> d
             by_customer[row["customer"]].append(row)
     details: dict[str, Any] = {}
     for name, customer_rows in by_customer.items():
+        trend_rows = [row for row in customer_rows if row["date"].year in YEARS]
         monthly = []
-        for (year, month) in sorted({(r["date"].year, r["date"].month) for r in customer_rows}):
-            selected = [r for r in customer_rows if r["date"].year == year and r["date"].month == month]
+        for (year, month) in sorted({(r["date"].year, r["date"].month) for r in trend_rows}):
+            selected = [r for r in trend_rows if r["date"].year == year and r["date"].month == month]
             monthly.append({"year": year, "month": month, **_totals(selected)})
         details[name] = {
             "total": _totals(customer_rows),
@@ -254,6 +286,23 @@ def _customer_comparison(current: list[dict[str, Any]], prior: list[dict[str, An
     return result
 
 
+def _salesperson_comparison(current: list[dict[str, Any]], prior: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    current_by_name = {item["name"]: item for item in _rank(current, "salesperson")}
+    prior_by_name = {item["name"]: item for item in _rank(prior, "salesperson")}
+    result = []
+    for name in current_by_name.keys() | prior_by_name.keys():
+        current_item = current_by_name.get(name, {})
+        current_sales = current_item.get("sales", 0.0)
+        prior_sales = prior_by_name.get(name, {}).get("sales", 0.0)
+        result.append({
+            "name": name,
+            "current_sales": current_sales,
+            "prior_sales": prior_sales,
+            "dollar_change": round(current_sales - prior_sales, 2),
+        })
+    return sorted(result, key=lambda item: (-item["current_sales"], item["name"]))
+
+
 def build_snapshot(rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = None) -> dict[str, Any]:
     as_of = as_of or dt.date.today()
     unique: dict[str, dict[str, Any]] = {}
@@ -278,6 +327,7 @@ def build_snapshot(rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = No
                 "rankings": _ranking_bundle(current, prior),
                 "prior_rankings": _ranking_bundle(prior),
                 "customer_comparison": _customer_comparison(current, prior),
+                "salesperson_comparison": _salesperson_comparison(current, prior),
             }
     rolling_start = choose_period_start("1M", as_of)
     rolling = [r for r in transactions if rolling_start <= r["date"] <= as_of]
@@ -285,13 +335,17 @@ def build_snapshot(rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = No
     prior_rolling = [r for r in transactions if prior_rolling_start <= r["date"] <= prior_as_of]
     ytd = [r for r in transactions if r["date"].year == as_of.year and r["date"] <= as_of]
     prior_ytd = [r for r in transactions if dt.date(as_of.year - 1, 1, 1) <= r["date"] <= prior_as_of]
-    full = transactions
+    full_start = dt.date(min(YEARS), 1, 1)
+    full = [r for r in transactions if full_start <= r["date"] <= as_of]
+    prior_full_start = full_start.replace(year=full_start.year - len(YEARS))
+    prior_full_end = _shift_year(as_of, len(YEARS))
+    prior_full = [r for r in transactions if prior_full_start <= r["date"] <= prior_full_end]
     comparisons = {
-        "1M": {"current": _totals(rolling), "prior": _totals(prior_rolling), "prior_rankings": _ranking_bundle(prior_rolling), "customer_comparison": _customer_comparison(rolling, prior_rolling)},
-        "YTD": {"current": _totals(ytd), "prior": _totals(prior_ytd), "prior_rankings": _ranking_bundle(prior_ytd), "customer_comparison": _customer_comparison(ytd, prior_ytd)},
-        "FULL": {"current": _totals(ytd), "prior": _totals(prior_ytd), "prior_rankings": _ranking_bundle(prior_ytd), "customer_comparison": _customer_comparison(ytd, prior_ytd)},
+        "1M": {"current": _totals(rolling), "prior": _totals(prior_rolling), "prior_rankings": _ranking_bundle(prior_rolling), "customer_comparison": _customer_comparison(rolling, prior_rolling), "salesperson_comparison": _salesperson_comparison(rolling, prior_rolling)},
+        "YTD": {"current": _totals(ytd), "prior": _totals(prior_ytd), "prior_rankings": _ranking_bundle(prior_ytd), "customer_comparison": _customer_comparison(ytd, prior_ytd), "salesperson_comparison": _salesperson_comparison(ytd, prior_ytd)},
+        "FULL": {"current": _totals(full), "prior": _totals(prior_full), "prior_rankings": _ranking_bundle(prior_full), "customer_comparison": _customer_comparison(full, prior_full), "salesperson_comparison": _salesperson_comparison(full, prior_full)},
     }
-    period_rankings = {"1M": _ranking_bundle(rolling, prior_rolling), "YTD": _ranking_bundle(ytd, prior_ytd), "FULL": _ranking_bundle(full)}
+    period_rankings = {"1M": _ranking_bundle(rolling, prior_rolling), "YTD": _ranking_bundle(ytd, prior_ytd), "FULL": _ranking_bundle(full, prior_full)}
     detail_customers: set[str] = set()
     for month_data in months.values():
         for group in (month_data["rankings"]["customers"], month_data["prior_rankings"]["customers"], month_data["customer_comparison"]):
@@ -313,7 +367,17 @@ def build_snapshot(rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = No
         "salespeople": _rank(ytd, "salesperson"),
         "branches": _rank(ytd, "location"),
         "customers": _rank(ytd, "customer", 25),
-        "salesperson_details": _salesperson_details(transactions),
+        "salesperson_details": _salesperson_details(
+            transactions,
+            {"1M": rolling, "YTD": ytd, "FULL": full},
+            {
+                month: [
+                    row for row in transactions
+                    if f'{row["date"].year}-{row["date"].month:02d}' == month
+                ]
+                for month in months
+            },
+        ),
         "customer_details": _customer_details(transactions, detail_customers),
     }
 
@@ -339,6 +403,13 @@ def build_open_orders(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     return {"amount": round(sum(r["amount"] for r in orders), 2), "orders": len(orders), "branches": group("location"), "salespeople": group("salesperson")}
 
 
+def build_daily_activity(row: Mapping[str, Any]) -> dict[str, int]:
+    return {
+        "tickets_written": int(row.get("tickets_written") or 0),
+        "invoices_posted": int(row.get("invoices_posted") or 0),
+    }
+
+
 def extract() -> dict[str, Any]:
     with connect() as connection:
         cursor = connection.cursor()
@@ -346,8 +417,10 @@ def extract() -> dict[str, Any]:
         transaction_rows = [dict(zip(cols, row)) for row in cursor.execute(TRANSACTION_SQL).fetchall()]
         order_cols = ["sop", "salesperson", "location", "amount"]
         order_rows = [dict(zip(order_cols, row)) for row in cursor.execute(OPEN_ORDER_SQL).fetchall()]
+        activity_row = cursor.execute(DAILY_ACTIVITY_SQL).fetchone()
     snapshot = build_snapshot(transaction_rows)
     snapshot["open_orders"] = build_open_orders(order_rows)
+    snapshot["today"] = build_daily_activity(dict(zip(("tickets_written", "invoices_posted"), activity_row)))
     snapshot["refreshed_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
     canonical = json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode()
     snapshot["sha256"] = hashlib.sha256(canonical).hexdigest()
