@@ -5,7 +5,9 @@ from unittest.mock import patch
 from scripts.sales_sync import (
     TODAY_ACTIVITY_SQL,
     TRANSACTION_SQL,
+    WEEKLY_ORDER_SQL,
     build_today_activity,
+    build_weekly_reports,
     build_snapshot,
     choose_period_start,
     extract,
@@ -15,6 +17,42 @@ from scripts.sales_sync import (
 
 
 class SalesSyncTests(unittest.TestCase):
+    def test_weekly_order_sql_combines_work_and_history_by_created_date(self):
+        self.assertIn("FROM dbo.SOP10100", WEEKLY_ORDER_SQL)
+        self.assertIn("FROM dbo.SOP30200", WEEKLY_ORDER_SQL)
+        self.assertIn("SOPTYPE = 2", WEEKLY_ORDER_SQL)
+        self.assertIn("VOIDSTTS = 0", WEEKLY_ORDER_SQL)
+        self.assertIn("IV00101", WEEKLY_ORDER_SQL)
+        self.assertIn("ITEMTYPE = 1", WEEKLY_ORDER_SQL)
+        self.assertIn("ABS(l.EXTDCOST) > ABS(l.XTNDPRCE)", WEEKLY_ORDER_SQL)
+        self.assertIn("CREATDDT", WEEKLY_ORDER_SQL)
+        self.assertIn("ROW_NUMBER() OVER", WEEKLY_ORDER_SQL)
+
+    def test_weekly_reports_use_sunday_saturday_and_keep_drilldown(self):
+        rows = [
+            {"sop":"O1","created_date":dt.date(2026,9,13),"salesperson":"SAM","salesperson_name":"Sam Seller","location":"FARGO","subtotal":100,"line_items":2,"stock_total":80,"stock_cost":50,"status":"open"},
+            {"sop":"O2","created_date":dt.date(2026,9,14),"salesperson":"SAM","salesperson_name":"Sam Seller","location":"FARGO","subtotal":200,"line_items":3,"stock_total":150,"stock_cost":90,"status":"history"},
+            {"sop":"O3","created_date":dt.date(2026,9,12),"salesperson":"RICK","salesperson_name":"Rick Seller","location":"BIS","subtotal":50,"line_items":1,"stock_total":50,"stock_cost":30,"status":"history"},
+        ]
+        reports = build_weekly_reports(rows, as_of=dt.date(2026,9,14))
+        current = reports["weeks"][0]
+        self.assertEqual((current["start"], current["end"]), ("2026-09-13", "2026-09-19"))
+        self.assertEqual(current["totals"], {"orders":2,"line_items":5,"total":300.0,"stock_total":230.0,"stock_profit":90.0,"stock_margin_pct":39.13})
+        self.assertEqual(current["salespeople"][0]["name"], "Sam Seller")
+        self.assertEqual([row["sop"] for row in current["salespeople"][0]["orders"]], ["O2", "O1"])
+        self.assertEqual(reports["today"]["totals"]["orders"], 1)
+
+    def test_weekly_report_keeps_duplicate_display_names_separate_by_salesperson_id(self):
+        rows = [
+            {"sop": "O-1", "created_date": "2026-09-14", "salesperson": "A1", "salesperson_name": "Pat O'Brien", "location": "HQ", "subtotal": 10, "line_items": 1, "stock_total": 10, "stock_cost": 8, "status": "open"},
+            {"sop": "O-2", "created_date": "2026-09-14", "salesperson": "B2", "salesperson_name": "Pat O'Brien", "location": "HQ", "subtotal": 20, "line_items": 1, "stock_total": 20, "stock_cost": 16, "status": "open"},
+        ]
+        report = build_weekly_reports(rows, dt.date(2026, 9, 14), week_count=1)["today"]
+        self.assertEqual({person["salesperson"] for person in report["salespeople"]}, {"A1", "B2"})
+        self.assertEqual([person["name"] for person in report["salespeople"]], ["Pat O'Brien", "Pat O'Brien"])
+        self.assertNotIn("salesperson", report["salespeople"][0]["orders"][0])
+        self.assertNotIn("name", report["salespeople"][0]["orders"][0])
+
     def test_today_activity_sql_uses_distinct_documents_and_separate_gp_dates(self):
         self.assertIn("PARTITION BY [SOP Type], [SOP Number]", TODAY_ACTIVITY_SQL)
         self.assertIn("sop_type = 'Order' AND created_date = CAST(GETDATE() AS date)", TODAY_ACTIVITY_SQL)

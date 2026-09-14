@@ -18,8 +18,19 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_power_bi_report_sections_exist(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
-        for section in ("Overview", "Salespeople", "Branches", "Customers", "Open Orders"):
+        for section in ("Overview", "Salespeople", "Branches", "Customers", "Open Orders", "Weekly Report"):
             self.assertIn(section, html)
+
+    def test_weekly_report_and_today_ticket_drilldown_exist(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+        for token in ('data-view="weekly"', 'id="weekly"', 'id="weeklySelect"',
+                      'id="weeklySalespeople"', "openWeeklyReport", "openWeeklyPerson",
+                      "weekly_reports", "Tickets Written Today"):
+            self.assertIn(token, html)
+        self.assertIn('onclick="openWeeklyReport(\'today\')"', html)
+        self.assertNotIn('onclick="openWeeklyPerson', html)
+        self.assertIn('data-weekly-person=', html)
+        self.assertIn("weeklySalespeople.onclick", html)
 
     def test_freshness_and_sql_source_are_visible(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
@@ -138,7 +149,7 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_version_is_visible_beneath_top_left_brand_on_mobile_and_desktop(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
-        self.assertIn('<div class="version">VERSION 1.4</div>', html)
+        self.assertIn('<div class="version">VERSION 1.5</div>', html)
         self.assertNotIn("VERSION 1.3", html)
         self.assertNotIn(".brand .eyebrow,.version,.side-foot{display:none}", html)
 

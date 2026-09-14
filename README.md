@@ -17,6 +17,11 @@ Live, authenticated sales reporting sourced from read-only Dynamics GP SQL. It p
 - Customer detail compares monthly net sales for 2025 and 2026 in aligned bars
 - Tickets written today = distinct normal orders by GP `Created Date`, with `Subtotal` dollars
 - Invoices posted today = distinct normal posted invoices by GP `Posted Date`, with `Subtotal` dollars
+- Weekly Report = live normal GP sales orders grouped Sunday–Saturday by `CREATDDT`
+- Weekly Total $ = order header `SUBTOTAL` (tax excluded)
+- Weekly stock metrics = inventory items with `IV00101.ITEMTYPE = 1`; cost uses the dashboard cost guard
+- Weekly salesperson rows drill into their open or transferred/history order documents
+- The snapshot carries the current week plus the previous 15 weeks; Tickets Written Today opens the same report in Today mode
 
 ## Refresh
 

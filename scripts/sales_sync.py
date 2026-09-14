@@ -95,6 +95,72 @@ WHERE rn = 1 AND sop_type = 'Invoice' AND posting_status = 'Posted'
   AND posted_date = CAST(GETDATE() AS date)
 """
 
+WEEKLY_ORDER_SQL = """
+WITH header_source AS (
+  SELECT 'open' AS record_status, 0 AS source_rank, SOPTYPE, LTRIM(RTRIM(SOPNUMBE)) AS sop,
+         CAST(CREATDDT AS date) AS created_date, LTRIM(RTRIM(SLPRSNID)) AS salesperson,
+         LTRIM(RTRIM(LOCNCODE)) AS location, CAST(SUBTOTAL AS decimal(19,2)) AS subtotal,
+         DEX_ROW_TS
+  FROM dbo.SOP10100
+  WHERE SOPTYPE = 2 AND VOIDSTTS = 0
+    AND CREATDDT >= DATEADD(day, -111, CAST(GETDATE() AS date))
+  UNION ALL
+  SELECT 'history', 1, SOPTYPE, LTRIM(RTRIM(SOPNUMBE)), CAST(CREATDDT AS date),
+         LTRIM(RTRIM(SLPRSNID)), LTRIM(RTRIM(LOCNCODE)), CAST(SUBTOTAL AS decimal(19,2)),
+         DEX_ROW_TS
+  FROM dbo.SOP30200
+  WHERE SOPTYPE = 2 AND VOIDSTTS = 0
+    AND CREATDDT >= DATEADD(day, -111, CAST(GETDATE() AS date))
+), headers AS (
+  SELECT *, ROW_NUMBER() OVER (
+    PARTITION BY SOPTYPE, sop ORDER BY source_rank, DEX_ROW_TS DESC
+  ) AS rn
+  FROM header_source
+), line_source AS (
+  SELECT 'open' AS record_status, LTRIM(RTRIM(l.SOPNUMBE)) AS sop,
+         COUNT(*) AS line_items,
+         SUM(CASE WHEN i.ITEMTYPE = 1 THEN CAST(l.XTNDPRCE AS decimal(19,2)) ELSE 0 END) AS stock_total,
+         SUM(CASE WHEN i.ITEMTYPE = 1 THEN
+               CASE WHEN ABS(l.EXTDCOST) > ABS(l.XTNDPRCE)
+                    THEN ABS(CAST(l.XTNDPRCE AS decimal(19,2))) * 0.10
+                    ELSE ABS(CAST(l.EXTDCOST AS decimal(19,2))) END
+             ELSE 0 END) AS stock_cost
+  FROM dbo.SOP10200 l
+  JOIN headers h ON h.rn = 1 AND h.record_status = 'open'
+    AND h.SOPTYPE = l.SOPTYPE AND h.sop = LTRIM(RTRIM(l.SOPNUMBE))
+  LEFT JOIN dbo.IV00101 i ON i.ITEMNMBR = l.ITEMNMBR
+  WHERE l.SOPTYPE = 2
+  GROUP BY l.SOPNUMBE
+  UNION ALL
+  SELECT 'history', LTRIM(RTRIM(l.SOPNUMBE)), COUNT(*),
+         SUM(CASE WHEN i.ITEMTYPE = 1 THEN CAST(l.XTNDPRCE AS decimal(19,2)) ELSE 0 END),
+         SUM(CASE WHEN i.ITEMTYPE = 1 THEN
+               CASE WHEN ABS(l.EXTDCOST) > ABS(l.XTNDPRCE)
+                    THEN ABS(CAST(l.XTNDPRCE AS decimal(19,2))) * 0.10
+                    ELSE ABS(CAST(l.EXTDCOST AS decimal(19,2))) END
+             ELSE 0 END)
+  FROM dbo.SOP30300 l
+  JOIN headers h ON h.rn = 1 AND h.record_status = 'history'
+    AND h.SOPTYPE = l.SOPTYPE AND h.sop = LTRIM(RTRIM(l.SOPNUMBE))
+  LEFT JOIN dbo.IV00101 i ON i.ITEMNMBR = l.ITEMNMBR
+  WHERE l.SOPTYPE = 2
+  GROUP BY l.SOPNUMBE
+), salesperson_names AS (
+  SELECT LTRIM(RTRIM(SLPRSNID)) AS salesperson,
+         LTRIM(RTRIM(CONCAT(SLPRSNFN, ' ', SPRSNSMN, ' ', SPRSNSLN))) AS salesperson_name
+  FROM dbo.RM00301
+)
+SELECT h.sop, h.created_date, h.salesperson, COALESCE(NULLIF(n.salesperson_name,''), h.salesperson) AS salesperson_name,
+       h.location, h.subtotal, COALESCE(l.line_items,0) AS line_items,
+       COALESCE(l.stock_total,0) AS stock_total, COALESCE(l.stock_cost,0) AS stock_cost,
+       h.record_status AS status
+FROM headers h
+LEFT JOIN line_source l ON l.sop = h.sop AND l.record_status = h.record_status
+LEFT JOIN salesperson_names n ON n.salesperson = h.salesperson
+WHERE h.rn = 1 AND h.created_date <= CAST(GETDATE() AS date)
+ORDER BY h.created_date DESC, h.sop
+"""
+
 class _CredentialW(ctypes.Structure):
     _fields_ = [
         ("Flags", wintypes.DWORD), ("Type", wintypes.DWORD),
@@ -424,6 +490,72 @@ def build_today_activity(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
             }
     return activity
 
+
+def _weekly_totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    stock_total = round(sum(row["stock_total"] for row in rows), 2)
+    stock_profit = round(sum(row["stock_profit"] for row in rows), 2)
+    return {
+        "orders": len(rows),
+        "line_items": sum(row["line_items"] for row in rows),
+        "total": round(sum(row["total"] for row in rows), 2),
+        "stock_total": stock_total,
+        "stock_profit": stock_profit,
+        "stock_margin_pct": round(100 * stock_profit / stock_total, 2) if stock_total else 0.0,
+    }
+
+
+def build_weekly_reports(
+    rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = None, week_count: int = 16
+) -> dict[str, Any]:
+    as_of = as_of or dt.date.today()
+    unique: dict[str, dict[str, Any]] = {}
+    for source in rows:
+        sop = str(source.get("sop") or "").strip()
+        if not sop:
+            continue
+        stock_total = round(float(source.get("stock_total") or 0), 2)
+        stock_cost = round(float(source.get("stock_cost") or 0), 2)
+        unique[sop] = {
+            "sop": sop,
+            "created_date": _date(source.get("created_date")),
+            "salesperson": str(source.get("salesperson") or "Unassigned").strip() or "Unassigned",
+            "name": str(source.get("salesperson_name") or source.get("salesperson") or "Unassigned").strip() or "Unassigned",
+            "location": str(source.get("location") or "Unassigned").strip() or "Unassigned",
+            "total": round(float(source.get("subtotal") or 0), 2),
+            "line_items": int(source.get("line_items") or 0),
+            "stock_total": stock_total,
+            "stock_profit": round(stock_total - stock_cost, 2),
+            "status": str(source.get("status") or "history").strip().lower(),
+        }
+    orders = [row for row in unique.values() if row["created_date"] <= as_of]
+    current_start = as_of - dt.timedelta(days=(as_of.weekday() + 1) % 7)
+
+    def report(selected: list[dict[str, Any]], start: dt.date, end: dt.date) -> dict[str, Any]:
+        groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in selected:
+            groups[row["salesperson"]].append(row)
+        people = []
+        for salesperson, person_orders in groups.items():
+            name = person_orders[0]["name"]
+            person_orders.sort(key=lambda item: (item["created_date"], item["sop"]), reverse=True)
+            display_orders = [{
+                key: row[key] for key in (
+                    "sop", "location", "total", "line_items", "stock_total", "stock_profit", "status"
+                )
+            } | {"created_date": row["created_date"].isoformat()} for row in person_orders]
+            people.append({"salesperson": salesperson, "name": name, **_weekly_totals(person_orders), "orders": display_orders})
+        people.sort(key=lambda item: (-item["total"], item["name"]))
+        return {"start": start.isoformat(), "end": end.isoformat(), "totals": _weekly_totals(selected), "salespeople": people}
+
+    weeks = []
+    for index in range(week_count):
+        start = current_start - dt.timedelta(days=7 * index)
+        end = start + dt.timedelta(days=6)
+        weeks.append(report([row for row in orders if start <= row["created_date"] <= end], start, end))
+    today_report = report([row for row in orders if row["created_date"] == as_of], as_of, as_of)
+    return {"weeks": weeks, "today": today_report}
+
+
 def extract() -> dict[str, Any]:
     with connect() as connection:
         cursor = connection.cursor()
@@ -433,9 +565,12 @@ def extract() -> dict[str, Any]:
         order_rows = [dict(zip(order_cols, row)) for row in cursor.execute(OPEN_ORDER_SQL).fetchall()]
         activity_cols = ["metric", "count", "amount"]
         activity_rows = [dict(zip(activity_cols, row)) for row in cursor.execute(TODAY_ACTIVITY_SQL).fetchall()]
+        weekly_cols = ["sop", "created_date", "salesperson", "salesperson_name", "location", "subtotal", "line_items", "stock_total", "stock_cost", "status"]
+        weekly_rows = [dict(zip(weekly_cols, row)) for row in cursor.execute(WEEKLY_ORDER_SQL).fetchall()]
     snapshot = build_snapshot(transaction_rows)
     snapshot["open_orders"] = build_open_orders(order_rows)
     snapshot["today_activity"] = build_today_activity(activity_rows)
+    snapshot["weekly_reports"] = build_weekly_reports(weekly_rows)
     snapshot["today"] = {
         "tickets_written": snapshot["today_activity"]["tickets"]["count"],
         "invoices_posted": snapshot["today_activity"]["invoices"]["count"],
