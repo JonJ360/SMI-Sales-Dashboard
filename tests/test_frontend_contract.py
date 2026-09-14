@@ -87,6 +87,21 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("type:'bar'", html)
         self.assertIn("salespersonMonthlyChart(detail.monthly)", html)
 
+    def test_customer_drilldown_uses_only_2025_2026_monthly_bars(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn("function customerMonthlyChart", html)
+        self.assertIn("years=[2025,2026]", html)
+        self.assertIn("customerMonthlyChart(detail.monthly)", html)
+        self.assertIn("2025 / 2026", html)
+
+    def test_salesperson_customer_list_uses_mobile_cards_without_horizontal_scroll(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn('class="panel-body drawer-customer-wrap"', html)
+        self.assertIn('class="drawer-customer-table"', html)
+        self.assertIn("#salespersonDrawer .drawer-customer-wrap{overflow:visible}", html)
+        self.assertIn("#salespersonDrawer .drawer-customer-table{min-width:0}", html)
+        self.assertIn("#salespersonDrawer .drawer-customer-table thead{display:none}", html)
+
     def test_salesperson_drilldown_has_ytd_sales_and_profit_pies(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
         self.assertIn('id="salespersonSalesPie"', html)
@@ -123,8 +138,8 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_version_is_visible_beneath_top_left_brand_on_mobile_and_desktop(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
-        self.assertIn('<div class="version">VERSION 1.3</div>', html)
-        self.assertNotIn("VERSION 1.2", html)
+        self.assertIn('<div class="version">VERSION 1.4</div>', html)
+        self.assertNotIn("VERSION 1.3", html)
         self.assertNotIn(".brand .eyebrow,.version,.side-foot{display:none}", html)
 
 

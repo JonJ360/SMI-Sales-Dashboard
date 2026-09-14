@@ -13,7 +13,8 @@ Live, authenticated sales reporting sourced from read-only Dynamics GP SQL. It p
 - Periods: rolling 30 days (`1M`), YTD, any selectable month, and 2024–2026 history through the current as-of date
 - Like-for-like comparisons: prior-year rolling 30-day, YTD, and month; the 2024–2026 window compares with 2021–2023 through the same month/day cutoff
 - All-salespeople report shows current-period sales, comparable prior-period sales, and dollar change
-- Click-through salesperson detail uses the selected period for customer rankings and totals
+- Click-through salesperson detail uses the selected period for customer rankings and totals, with phone-friendly customer cards
+- Customer detail compares monthly net sales for 2025 and 2026 in aligned bars
 - Tickets written today = distinct normal orders by GP `Created Date`, with `Subtotal` dollars
 - Invoices posted today = distinct normal posted invoices by GP `Posted Date`, with `Subtotal` dollars
 
