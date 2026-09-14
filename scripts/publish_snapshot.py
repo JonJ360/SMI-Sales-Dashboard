@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -27,13 +28,19 @@ def rpc(base: str, publishable: str, token: str, name: str, payload: dict[str, A
         method="POST",
         headers={"apikey": publishable, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
     )
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            raw = response.read().decode()
-            return json.loads(raw) if raw else None
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode(errors="replace")
-        raise RuntimeError(f"{name} failed: HTTP {exc.code} {detail[:500]}") from None
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                raw = response.read().decode()
+                return json.loads(raw) if raw else None
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode(errors="replace")
+            raise RuntimeError(f"{name} failed: HTTP {exc.code} {detail[:500]}") from None
+        except (TimeoutError, urllib.error.URLError):
+            if attempt == 1:
+                raise
+            time.sleep(2)
+    raise RuntimeError(f"{name} failed without a response")
 
 
 def publish(snapshot_path: Path, credential_path: Path) -> dict[str, Any]:
