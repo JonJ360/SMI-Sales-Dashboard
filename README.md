@@ -10,6 +10,8 @@ Live, authenticated sales reporting sourced from read-only Dynamics GP SQL. It p
 - Profit = sales minus guarded cost
 - Invoice count = distinct invoice SOP number
 - Open orders = remaining subtotal on normal, unposted orders
+- Tickets written today = distinct normal orders by GP `Created Date`, with `Subtotal` dollars
+- Invoices posted today = distinct normal posted invoices by GP `Posted Date`, with `Subtotal` dollars
 - Periods: rolling 30 days (`1M`), YTD, any selectable month, and 2024–2026 history
 - Prior-year comparisons for rolling 30-day, YTD, month, and salesperson views
 - Click-through salesperson detail with KPIs, trend, returns, and top customers

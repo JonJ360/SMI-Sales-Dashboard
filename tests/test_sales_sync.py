@@ -1,10 +1,25 @@
 import datetime as dt
 import unittest
 
-from scripts.sales_sync import choose_period_start, normalize_invoice, normalize_transaction, build_snapshot
+from scripts.sales_sync import TODAY_ACTIVITY_SQL, build_snapshot, build_today_activity, choose_period_start, normalize_invoice, normalize_transaction
 
 
 class SalesSyncTests(unittest.TestCase):
+    def test_today_activity_sql_uses_distinct_documents_and_separate_gp_dates(self):
+        self.assertIn("PARTITION BY [SOP Type], [SOP Number]", TODAY_ACTIVITY_SQL)
+        self.assertIn("sop_type = 'Order' AND created_date = CAST(GETDATE() AS date)", TODAY_ACTIVITY_SQL)
+        self.assertIn("sop_type = 'Invoice' AND posting_status = 'Posted'", TODAY_ACTIVITY_SQL)
+        self.assertIn("posted_date = CAST(GETDATE() AS date)", TODAY_ACTIVITY_SQL)
+        self.assertIn("CAST([Subtotal] AS decimal(19,2))", TODAY_ACTIVITY_SQL)
+
+    def test_today_activity_keeps_ticket_and_posted_invoice_counts_and_dollars(self):
+        activity = build_today_activity([
+            {"metric": "tickets", "count": 12, "amount": 3456.78},
+            {"metric": "invoices", "count": 7, "amount": 8901.23},
+        ])
+        self.assertEqual(activity["tickets"], {"count": 12, "amount": 3456.78})
+        self.assertEqual(activity["invoices"], {"count": 7, "amount": 8901.23})
+
     def test_one_month_period_is_rolling_30_days(self):
         self.assertEqual(choose_period_start("1M", dt.date(2026, 9, 13)), dt.date(2026, 8, 15))
 

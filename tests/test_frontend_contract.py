@@ -5,6 +5,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class FrontendContractTests(unittest.TestCase):
+    def test_today_ticket_and_posted_invoice_cards_show_counts_and_dollars(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+        for token in ("Tickets Written Today", "Invoices Posted Today", 'id="ticketsTodayKpi"', 'id="invoicesTodayKpi"', "today_activity"):
+            self.assertIn(token, html)
+
     def test_asset_tracker_blue_tokens_and_one_month_control_exist(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
         for token in ("#E9ECF1", "#FFFFFF", "#222A33", "#2E6FD9", "#1F5AB8"):
@@ -72,7 +77,7 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_version_is_visible_beneath_top_left_brand_on_mobile_and_desktop(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
-        self.assertIn('<div class="version">VERSION 1.2</div>', html)
+        self.assertIn('<div class="version">VERSION 1.3</div>', html)
         self.assertNotIn(".brand .eyebrow,.version,.side-foot{display:none}", html)
 
 
