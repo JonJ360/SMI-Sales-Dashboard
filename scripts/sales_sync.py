@@ -325,7 +325,12 @@ def _salesperson_details(
     return details
 
 
-def _customer_details(rows: list[dict[str, Any]], included_names: set[str]) -> dict[str, Any]:
+def _customer_details(
+    rows: list[dict[str, Any]],
+    included_names: set[str],
+    period_rows: Mapping[str, list[dict[str, Any]]],
+    month_rows: Mapping[str, list[dict[str, Any]]],
+) -> dict[str, Any]:
     by_customer: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         if row["customer"] in included_names:
@@ -337,10 +342,16 @@ def _customer_details(rows: list[dict[str, Any]], included_names: set[str]) -> d
         for (year, month) in sorted({(r["date"].year, r["date"].month) for r in trend_rows}):
             selected = [r for r in trend_rows if r["date"].year == year and r["date"].month == month]
             monthly.append({"year": year, "month": month, **_totals(selected)})
+        def scoped_detail(selected: list[dict[str, Any]]) -> dict[str, Any]:
+            selected = [row for row in selected if row["customer"] == name]
+            return {"total": _totals(selected), "salespeople": _rank(selected, "salesperson", 20)}
+
         details[name] = {
             "total": _totals(customer_rows),
             "monthly": monthly,
             "salespeople": _rank(customer_rows, "salesperson", 20),
+            "periods": {period: scoped_detail(selected) for period, selected in period_rows.items()},
+            "months": {month: scoped_detail(selected) for month, selected in month_rows.items()},
         }
     return details
 
@@ -454,7 +465,18 @@ def build_snapshot(rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = No
                 for month in months
             },
         ),
-        "customer_details": _customer_details(transactions, detail_customers),
+        "customer_details": _customer_details(
+            transactions,
+            detail_customers,
+            {"1M": rolling, "YTD": ytd, "FULL": full},
+            {
+                month: [
+                    row for row in transactions
+                    if f'{row["date"].year}-{row["date"].month:02d}' == month
+                ]
+                for month in months
+            },
+        ),
     }
 
 

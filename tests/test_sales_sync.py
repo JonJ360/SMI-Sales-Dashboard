@@ -131,7 +131,11 @@ class SalesSyncTests(unittest.TestCase):
         self.assertEqual(comparison[0]["prior_sales"], 500.0)
         self.assertEqual(comparison[0]["current_sales"], 100.0)
         self.assertIn("A", snap["customer_details"])
-        self.assertEqual(snap["customer_details"]["A"]["salespeople"][0]["name"], "SAM")
+        detail = snap["customer_details"]["A"]
+        self.assertEqual(detail["salespeople"][0]["name"], "SAM")
+        self.assertEqual(detail["periods"]["YTD"]["salespeople"][0]["name"], "SAM")
+        self.assertEqual(detail["periods"]["YTD"]["salespeople"][0]["sales"], 100.0)
+        self.assertEqual(detail["months"]["2026-08"]["salespeople"][0]["sales"], 100.0)
 
     def test_one_month_rankings_exclude_older_sales(self):
         rows = [
