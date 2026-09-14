@@ -110,6 +110,10 @@ class FrontendContractTests(unittest.TestCase):
         for token in ('id="customerSalesMix"', "Sales by Salesperson", "function customerScope", "function customerSalesMixChart"):
             self.assertIn(token, html)
         self.assertIn("type:'doughnut'", html)
+        self.assertIn("Math.abs(x.sales)", html)
+        self.assertIn("returns / adjustments", html)
+        self.assertIn("Net ", html)
+        self.assertNotIn("rows.filter(x=>x.sales>0)", html)
         self.assertIn("chart('customerSalesMix',customerSalesMixChart(scope.salespeople))", html)
         self.assertIn("Selected period", html)
 
@@ -157,7 +161,7 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_version_is_visible_beneath_top_left_brand_on_mobile_and_desktop(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
-        self.assertIn('<div class="version">VERSION 1.6</div>', html)
+        self.assertIn('<div class="version">VERSION 1.7</div>', html)
         self.assertNotIn("VERSION 1.3", html)
         self.assertNotIn(".brand .eyebrow,.version,.side-foot{display:none}", html)
 

@@ -272,6 +272,17 @@ def _rank(rows: list[dict[str, Any]], key: str, limit: int | None = None) -> lis
     return ranked[:limit] if limit else ranked
 
 
+def _rank_with_other(rows: list[dict[str, Any]], key: str, limit: int = 20) -> list[dict[str, Any]]:
+    """Bound chart payload while preserving exact signed totals."""
+    ranked = _rank(rows, key)
+    if len(ranked) <= limit:
+        return ranked
+    kept = ranked[:limit]
+    kept_names = {item["name"] for item in kept}
+    omitted = [row for row in rows if str(row[key]) not in kept_names]
+    return kept + [{"name": "Other / Adjustments", **_totals(omitted)}]
+
+
 def _shift_year(value: dt.date, years: int) -> dt.date:
     try:
         return value.replace(year=value.year - years)
@@ -344,7 +355,7 @@ def _customer_details(
             monthly.append({"year": year, "month": month, **_totals(selected)})
         def scoped_detail(selected: list[dict[str, Any]]) -> dict[str, Any]:
             selected = [row for row in selected if row["customer"] == name]
-            return {"total": _totals(selected), "salespeople": _rank(selected, "salesperson", 20)}
+            return {"total": _totals(selected), "salespeople": _rank_with_other(selected, "salesperson")}
 
         details[name] = {
             "total": _totals(customer_rows),

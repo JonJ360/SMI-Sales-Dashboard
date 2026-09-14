@@ -137,6 +137,20 @@ class SalesSyncTests(unittest.TestCase):
         self.assertEqual(detail["periods"]["YTD"]["salespeople"][0]["sales"], 100.0)
         self.assertEqual(detail["months"]["2026-08"]["salespeople"][0]["sales"], 100.0)
 
+    def test_customer_sales_mix_keeps_returns_and_every_salesperson(self):
+        rows = [
+            {"sop": f"I{i}", "date": dt.date(2026, 8, 2), "customer": "A", "salesperson": f"P{i:02d}", "location": "FARGO", "sales": float(i + 1), "extended_cost": 0.0}
+            for i in range(21)
+        ]
+        rows.append(normalize_transaction({"sop": "R1", "date": dt.date(2026, 8, 3), "customer": "A", "salesperson": "RETURNS", "location": "FARGO", "sales": 50, "extended_cost": 0, "kind": "Return"}))
+
+        scope = build_snapshot(rows, as_of=dt.date(2026, 9, 13))["customer_details"]["A"]["periods"]["YTD"]
+
+        self.assertEqual(len(scope["salespeople"]), 21)
+        self.assertEqual(scope["salespeople"][-1]["name"], "Other / Adjustments")
+        self.assertTrue(scope["salespeople"][-1]["sales"] < 0)
+        self.assertAlmostEqual(sum(person["sales"] for person in scope["salespeople"]), scope["total"]["sales"])
+
     def test_one_month_rankings_exclude_older_sales(self):
         rows = [
             {"sop":"OLD","date":dt.date(2026, 7, 1),"customer":"OLD CO","salesperson":"OLD","location":"GF","sales":900.0,"extended_cost":500.0},
