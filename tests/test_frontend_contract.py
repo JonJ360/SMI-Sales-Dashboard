@@ -36,6 +36,15 @@ class FrontendContractTests(unittest.TestCase):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
         self.assertIn("Last refreshed", html)
         self.assertIn("Dynamics GP SQL", html)
+        self.assertIn("smi_sales_snapshot_metadata", html)
+        self.assertIn("payload.refreshed_at=metadata.promoted_at", html)
+        self.assertIn("metadata.source_sha256===payload.sha256", html)
+
+    def test_unchanged_snapshot_heartbeat_is_atomic(self):
+        migration = (ROOT / "supabase" / "migrations" / "003_sales_snapshot_heartbeat.sql").read_text(encoding="utf-8")
+        self.assertIn("smi_sales_heartbeat_snapshot", migration)
+        self.assertIn("snapshot_id = p_snapshot_id", migration)
+        self.assertIn("return found", migration.lower())
 
     def test_production_data_is_auth_gated_through_supabase(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")

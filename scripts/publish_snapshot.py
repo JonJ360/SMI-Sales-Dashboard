@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import time
 import urllib.error
@@ -21,6 +22,12 @@ def load_credentials(path: Path) -> dict[str, str]:
     return {name: data[name].rstrip("/") if name == "supabase_url" else data[name] for name in required}
 
 
+def source_sha256(snapshot: dict[str, Any]) -> str:
+    source = {key: value for key, value in snapshot.items() if key not in {"refreshed_at", "sha256"}}
+    canonical = json.dumps(source, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(canonical).hexdigest()
+
+
 def rpc(base: str, publishable: str, token: str, name: str, payload: dict[str, Any]) -> Any:
     request = urllib.request.Request(
         f"{base}/rest/v1/rpc/{name}",
@@ -35,6 +42,9 @@ def rpc(base: str, publishable: str, token: str, name: str, payload: dict[str, A
                 return json.loads(raw) if raw else None
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode(errors="replace")
+            if exc.code in {502, 503, 504, 522} and attempt == 0:
+                time.sleep(2)
+                continue
             raise RuntimeError(f"{name} failed: HTTP {exc.code} {detail[:500]}") from None
         except (TimeoutError, urllib.error.URLError):
             if attempt == 1:
@@ -45,8 +55,21 @@ def rpc(base: str, publishable: str, token: str, name: str, payload: dict[str, A
 
 def publish(snapshot_path: Path, credential_path: Path) -> dict[str, Any]:
     snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    if snapshot.get("sha256") != source_sha256(snapshot):
+        raise RuntimeError("snapshot integrity verification failed")
     credentials = load_credentials(credential_path)
     base, key = credentials["supabase_url"], credentials["publishable_key"]
+    metadata = rpc(base, key, credentials["operator_verification_key"], "smi_sales_snapshot_metadata", {})
+    current = metadata[0] if isinstance(metadata, list) and metadata else {}
+    if current.get("source_sha256") == snapshot["sha256"]:
+        touched = rpc(base, key, credentials["current_ar_promotion_key"], "smi_sales_heartbeat_snapshot", {"p_snapshot_id": current["snapshot_id"]})
+        metadata = rpc(base, key, credentials["operator_verification_key"], "smi_sales_snapshot_metadata", {})
+        row = metadata[0] if isinstance(metadata, list) and metadata else {}
+        if not touched:
+            return {"snapshot_id": row.get("snapshot_id"), "source_sha256": row.get("source_sha256"), "as_of": row.get("as_of"), "refreshed_at": row.get("promoted_at"), "verified": bool(row), "skipped": True, "concurrent_update": True}
+        if int(row.get("snapshot_id", -1)) != int(current["snapshot_id"]) or row.get("source_sha256") != snapshot["sha256"]:
+            raise RuntimeError("unchanged snapshot heartbeat verification failed")
+        return {"snapshot_id": row["snapshot_id"], "source_sha256": snapshot["sha256"], "as_of": row.get("as_of"), "refreshed_at": row.get("promoted_at"), "verified": True, "skipped": True, "concurrent_update": False}
     snapshot_id = rpc(base, key, credentials["current_ar_ingestion_key"], "smi_sales_stage_snapshot", {
         "p_source_sha256": snapshot["sha256"], "p_as_of": snapshot["as_of"],
         "p_refreshed_at": snapshot["refreshed_at"], "p_payload": snapshot,
@@ -56,7 +79,7 @@ def publish(snapshot_path: Path, credential_path: Path) -> dict[str, Any]:
     row = metadata[0] if isinstance(metadata, list) and metadata else {}
     if int(row.get("snapshot_id", -1)) != int(snapshot_id) or row.get("source_sha256") != snapshot["sha256"]:
         raise RuntimeError("promoted snapshot verification failed")
-    return {"snapshot_id": snapshot_id, "source_sha256": snapshot["sha256"], "as_of": row.get("as_of"), "verified": True}
+    return {"snapshot_id": snapshot_id, "source_sha256": snapshot["sha256"], "as_of": row.get("as_of"), "refreshed_at": row.get("promoted_at"), "verified": True, "skipped": False}
 
 
 def main() -> int:

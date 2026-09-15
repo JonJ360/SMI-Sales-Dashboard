@@ -2,6 +2,8 @@ import datetime as dt
 import unittest
 from unittest.mock import patch
 
+import scripts.sales_sync as sales_sync
+
 from scripts.sales_sync import (
     TODAY_ACTIVITY_SQL,
     TRANSACTION_SQL,
@@ -17,6 +19,12 @@ from scripts.sales_sync import (
 
 
 class SalesSyncTests(unittest.TestCase):
+    def test_source_hash_ignores_refresh_timestamp(self):
+        first = {"company": "SMI", "sales": 100, "refreshed_at": "2026-09-14T19:00:00+00:00"}
+        second = {**first, "refreshed_at": "2026-09-14T19:05:00+00:00"}
+
+        self.assertEqual(sales_sync.source_sha256(first), sales_sync.source_sha256(second))
+
     def test_weekly_order_sql_combines_work_and_history_by_created_date(self):
         self.assertIn("FROM dbo.SOP10100", WEEKLY_ORDER_SQL)
         self.assertIn("FROM dbo.SOP30200", WEEKLY_ORDER_SQL)

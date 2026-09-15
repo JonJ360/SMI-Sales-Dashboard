@@ -589,6 +589,12 @@ def build_weekly_reports(
     return {"weeks": weeks, "today": today_report}
 
 
+def source_sha256(snapshot: dict[str, Any]) -> str:
+    source = {key: value for key, value in snapshot.items() if key not in {"refreshed_at", "sha256"}}
+    canonical = json.dumps(source, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(canonical).hexdigest()
+
+
 def extract() -> dict[str, Any]:
     with connect() as connection:
         cursor = connection.cursor()
@@ -609,8 +615,7 @@ def extract() -> dict[str, Any]:
         "invoices_posted": snapshot["today_activity"]["invoices"]["count"],
     }
     snapshot["refreshed_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
-    canonical = json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode()
-    snapshot["sha256"] = hashlib.sha256(canonical).hexdigest()
+    snapshot["sha256"] = source_sha256(snapshot)
     return snapshot
 
 
