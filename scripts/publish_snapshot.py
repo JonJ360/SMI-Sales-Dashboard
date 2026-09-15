@@ -42,7 +42,7 @@ def rpc(base: str, publishable: str, token: str, name: str, payload: dict[str, A
                 return json.loads(raw) if raw else None
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode(errors="replace")
-            if exc.code in {502, 503, 504, 522} and attempt == 0:
+            if exc.code in {502, 503, 504, 520, 522} and attempt == 0:
                 time.sleep(2)
                 continue
             raise RuntimeError(f"{name} failed: HTTP {exc.code} {detail[:500]}") from None
