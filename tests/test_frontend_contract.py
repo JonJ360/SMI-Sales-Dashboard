@@ -18,8 +18,20 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_power_bi_report_sections_exist(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
-        for section in ("Overview", "Salespeople", "Branches", "Customers", "Open Orders", "Weekly Report"):
+        for section in ("Overview", "Salespeople", "Branches", "Customers", "Open Orders", "Weekly Report", "Margin Exceptions"):
             self.assertIn(section, html)
+
+    def test_margin_exception_dashboard_shows_raw_invoice_profitability_and_reasons(self):
+        html = (ROOT / "index.html").read_text(encoding="utf-8")
+        for token in (
+            'data-view="margins"', 'id="margins"', "margin_exceptions",
+            'id="marginExceptionsKpi"', 'id="marginCriticalKpi"',
+            'id="marginLowKpi"', 'id="marginHistoricalKpi"',
+            "Extended Price", "Extended Cost", "Profit", "Profit %",
+            "renderMarginExceptions", "reasonLabel", "worst_lines",
+            "Posted invoices · raw GP line cost · trailing 30 days",
+        ):
+            self.assertIn(token, html)
 
     def test_weekly_report_and_today_ticket_drilldown_exist(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
@@ -170,7 +182,7 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_version_is_visible_beneath_top_left_brand_on_mobile_and_desktop(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
-        self.assertIn('<div class="version">VERSION 1.7</div>', html)
+        self.assertIn('<div class="version">VERSION 1.8</div>', html)
         self.assertNotIn("VERSION 1.3", html)
         self.assertNotIn(".brand .eyebrow,.version,.side-foot{display:none}", html)
 

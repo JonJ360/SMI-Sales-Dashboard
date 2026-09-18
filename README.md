@@ -22,6 +22,11 @@ Live, authenticated sales reporting sourced from read-only Dynamics GP SQL. It p
 - Weekly stock metrics = inventory items with `IV00101.ITEMTYPE = 1`; cost uses the dashboard cost guard
 - Weekly salesperson rows drill into their open or transferred/history order documents
 - The snapshot carries the current week plus the previous 15 weeks; Tickets Written Today opens the same report in Today mode
+- Margin Exceptions reviews posted, nonvoid SMI invoices from the trailing 30 days by GP posting date
+- Margin price and cost use raw `SOP30300.XTNDPRCE` and `SOP30300.EXTDCOST`; the normal dashboard cost guard is deliberately not applied
+- Exceptions include negative/zero-cost issues, invoice margin below 20%, and item margin at least 15 percentage points below its historical median
+- Historical item comparison requires at least 5 prior posted lines and $500 of prior sales within the trailing 395-day extraction
+- Margin Exceptions is dashboard-only and refreshes through the existing live snapshot pipeline
 
 ## Refresh
 

@@ -5,9 +5,11 @@ from unittest.mock import patch
 import scripts.sales_sync as sales_sync
 
 from scripts.sales_sync import (
+    MARGIN_EXCEPTION_SQL,
     TODAY_ACTIVITY_SQL,
     TRANSACTION_SQL,
     WEEKLY_ORDER_SQL,
+    build_margin_exceptions,
     build_today_activity,
     build_weekly_reports,
     build_snapshot,
@@ -19,6 +21,57 @@ from scripts.sales_sync import (
 
 
 class SalesSyncTests(unittest.TestCase):
+    def test_margin_exception_sql_uses_posted_nonvoid_invoice_lines_and_raw_cost(self):
+        for token in (
+            "FROM dbo.SOP30200 h", "JOIN dbo.SOP30300 l",
+            "h.SOPTYPE = 3", "h.VOIDSTTS = 0", "h.POSTEDDT",
+            "l.XTNDPRCE", "l.EXTDCOST", "h.SUBTOTAL", "h.EXTDCOST",
+        ):
+            self.assertIn(token, MARGIN_EXCEPTION_SQL)
+        self.assertIn("l.SOPTYPE = h.SOPTYPE", MARGIN_EXCEPTION_SQL)
+        self.assertIn("l.SOPNUMBE = h.SOPNUMBE", MARGIN_EXCEPTION_SQL)
+
+    def test_margin_exceptions_flag_cost_low_margin_and_historical_item_deviation(self):
+        history = [
+            {"sop": f"H{i}", "document_date": "2026-08-01", "posted_date": "2026-08-01",
+             "customer": "History", "salesperson": "SAM", "location": "FARGO",
+             "header_sales": 100, "header_cost": 70, "line_sequence": i,
+             "item": "A", "description": "Widget", "line_sales": 100, "line_cost": 70}
+            for i in range(5)
+        ]
+        recent = [
+            {"sop": "LOW", "document_date": "2026-09-17", "posted_date": "2026-09-17",
+             "customer": "Low Co", "salesperson": "SAM", "location": "FARGO",
+             "header_sales": 100, "header_cost": 90, "line_sequence": 1,
+             "item": "A", "description": "Widget", "line_sales": 100, "line_cost": 90},
+            {"sop": "ZERO", "document_date": "2026-09-17", "posted_date": "2026-09-17",
+             "customer": "Zero Co", "salesperson": "SAM", "location": "FARGO",
+             "header_sales": 100, "header_cost": 0, "line_sequence": 1,
+             "item": "B", "description": "Missing cost", "line_sales": 100, "line_cost": 0},
+            {"sop": "NEG", "document_date": "2026-09-17", "posted_date": "2026-09-17",
+             "customer": "Negative Co", "salesperson": "RICK", "location": "BIS",
+             "header_sales": 100, "header_cost": 120, "line_sequence": 1,
+             "item": "C", "description": "Cost over sales", "line_sales": 100, "line_cost": 120},
+            {"sop": "OK", "document_date": "2026-09-17", "posted_date": "2026-09-17",
+             "customer": "Healthy Co", "salesperson": "SAM", "location": "FARGO",
+             "header_sales": 100, "header_cost": 70, "line_sequence": 1,
+             "item": "A", "description": "Widget", "line_sales": 100, "line_cost": 70},
+        ]
+
+        report = build_margin_exceptions(history + recent, as_of=dt.date(2026, 9, 17))
+
+        self.assertEqual([row["sop"] for row in report["invoices"]], ["NEG", "ZERO", "LOW"])
+        by_sop = {row["sop"]: row for row in report["invoices"]}
+        self.assertEqual(by_sop["NEG"]["severity"], "Critical")
+        self.assertEqual(by_sop["NEG"]["margin_pct"], -20.0)
+        self.assertIn("negative_margin", by_sop["NEG"]["reason_codes"])
+        self.assertIn("zero_cost", by_sop["ZERO"]["reason_codes"])
+        self.assertIn("below_20_margin", by_sop["LOW"]["reason_codes"])
+        self.assertIn("historical_item_deviation", by_sop["LOW"]["reason_codes"])
+        self.assertEqual(by_sop["LOW"]["worst_lines"][0]["historical_margin_pct"], 30.0)
+        self.assertEqual(report["summary"]["exceptions"], 3)
+        self.assertEqual(report["thresholds"]["minimum_margin_pct"], 20.0)
+
     def test_source_hash_ignores_refresh_timestamp(self):
         first = {"company": "SMI", "sales": 100, "refreshed_at": "2026-09-14T19:00:00+00:00"}
         second = {**first, "refreshed_at": "2026-09-14T19:05:00+00:00"}
@@ -282,6 +335,31 @@ class SalesSyncTests(unittest.TestCase):
             "tickets_written": 7,
             "invoices_posted": 5,
         })
+
+    def test_extract_includes_margin_exception_report(self):
+        row = (
+            "LOW", dt.date(2026, 9, 17), dt.date(2026, 9, 17), "Low Co", "SAM", "Sam Seller",
+            "FARGO", 100, 90, 1, "A", "Widget", 100, 90,
+        )
+
+        class FakeCursor:
+            def execute(self, sql):
+                self.sql = sql
+                return self
+
+            def fetchall(self):
+                return [row] if self.sql == MARGIN_EXCEPTION_SQL else []
+
+        class FakeConnection:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def cursor(self): return FakeCursor()
+
+        with patch("scripts.sales_sync.connect", return_value=FakeConnection()):
+            snapshot = extract()
+
+        self.assertEqual(snapshot["margin_exceptions"]["summary"]["exceptions"], 1)
+        self.assertEqual(snapshot["margin_exceptions"]["invoices"][0]["sop"], "LOW")
 
     def test_customer_watchlist_uses_prior_year_top_25(self):
         rows = []

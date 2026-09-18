@@ -7,6 +7,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import statistics
 from collections import defaultdict
 from ctypes import wintypes
 from pathlib import Path
@@ -93,6 +94,38 @@ SELECT 'invoices', COUNT(*), COALESCE(SUM(amount), 0)
 FROM documents
 WHERE rn = 1 AND sop_type = 'Invoice' AND posting_status = 'Posted'
   AND posted_date = CAST(GETDATE() AS date)
+"""
+
+MARGIN_EXCEPTION_SQL = """
+WITH salesperson_names AS (
+  SELECT LTRIM(RTRIM(SLPRSNID)) AS salesperson,
+         LTRIM(RTRIM(CONCAT(SLPRSNFN, ' ', SPRSNSMN, ' ', SPRSNSLN))) AS salesperson_name
+  FROM dbo.RM00301
+)
+SELECT
+  LTRIM(RTRIM(h.SOPNUMBE)) AS sop,
+  CAST(h.DOCDATE AS date) AS document_date,
+  CAST(h.POSTEDDT AS date) AS posted_date,
+  LTRIM(RTRIM(h.CUSTNAME)) AS customer,
+  LTRIM(RTRIM(h.SLPRSNID)) AS salesperson,
+  COALESCE(NULLIF(n.salesperson_name, ''), LTRIM(RTRIM(h.SLPRSNID))) AS salesperson_name,
+  LTRIM(RTRIM(h.LOCNCODE)) AS location,
+  CAST(h.SUBTOTAL AS decimal(19,2)) AS header_sales,
+  CAST(h.EXTDCOST AS decimal(19,2)) AS header_cost,
+  l.LNITMSEQ AS line_sequence,
+  LTRIM(RTRIM(l.ITEMNMBR)) AS item,
+  LTRIM(RTRIM(l.ITEMDESC)) AS description,
+  CAST(l.XTNDPRCE AS decimal(19,2)) AS line_sales,
+  CAST(l.EXTDCOST AS decimal(19,2)) AS line_cost
+FROM dbo.SOP30200 h
+JOIN dbo.SOP30300 l
+  ON l.SOPTYPE = h.SOPTYPE AND l.SOPNUMBE = h.SOPNUMBE
+LEFT JOIN salesperson_names n ON n.salesperson = LTRIM(RTRIM(h.SLPRSNID))
+WHERE h.SOPTYPE = 3
+  AND h.VOIDSTTS = 0
+  AND h.POSTEDDT >= DATEADD(day, -395, CAST(GETDATE() AS date))
+  AND h.POSTEDDT < DATEADD(day, 1, CAST(GETDATE() AS date))
+ORDER BY h.POSTEDDT, h.SOPNUMBE, l.LNITMSEQ
 """
 
 WEEKLY_ORDER_SQL = """
@@ -512,6 +545,133 @@ def build_open_orders(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     return {"amount": round(sum(r["amount"] for r in orders), 2), "orders": len(orders), "branches": group("location"), "salespeople": group("salesperson")}
 
 
+def build_margin_exceptions(
+    rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = None,
+    window_days: int = 30, minimum_margin_pct: float = 20.0,
+    deviation_points: float = 15.0, minimum_history_lines: int = 5,
+) -> dict[str, Any]:
+    """Build a raw-cost posted-invoice exception report without dashboard cost guards."""
+    as_of = as_of or dt.date.today()
+    candidate_start = as_of - dt.timedelta(days=window_days - 1)
+    normalized = []
+    for source in rows:
+        posted_date = _date(source.get("posted_date"))
+        if posted_date > as_of:
+            continue
+        sales = round(float(source.get("line_sales") or 0), 2)
+        cost = round(float(source.get("line_cost") or 0), 2)
+        normalized.append({
+            "sop": str(source.get("sop") or "").strip(),
+            "document_date": _date(source.get("document_date")),
+            "posted_date": posted_date,
+            "customer": str(source.get("customer") or "Unknown").strip() or "Unknown",
+            "salesperson": str(source.get("salesperson") or "Unassigned").strip() or "Unassigned",
+            "salesperson_name": str(source.get("salesperson_name") or source.get("salesperson") or "Unassigned").strip() or "Unassigned",
+            "location": str(source.get("location") or "Unassigned").strip() or "Unassigned",
+            "header_sales": round(float(source.get("header_sales") or 0), 2),
+            "header_cost": round(float(source.get("header_cost") or 0), 2),
+            "line_sequence": int(source.get("line_sequence") or 0),
+            "item": str(source.get("item") or "Non-inventory").strip() or "Non-inventory",
+            "description": str(source.get("description") or "").strip(),
+            "sales": sales,
+            "cost": cost,
+            "profit": round(sales - cost, 2),
+            "margin_pct": round(100 * (sales - cost) / sales, 2) if sales else None,
+        })
+
+    history_by_item: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for line in normalized:
+        if line["posted_date"] < candidate_start and line["sales"] > 0:
+            history_by_item[line["item"]].append(line)
+    baselines: dict[str, float] = {}
+    for item, history in history_by_item.items():
+        if len(history) >= minimum_history_lines and sum(line["sales"] for line in history) >= 500:
+            baselines[item] = round(statistics.median(line["margin_pct"] for line in history if line["margin_pct"] is not None), 2)
+
+    by_invoice: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for line in normalized:
+        if candidate_start <= line["posted_date"] <= as_of and line["sop"]:
+            by_invoice[line["sop"]].append(line)
+
+    exceptions = []
+    for sop, lines in by_invoice.items():
+        sales = round(sum(line["sales"] for line in lines), 2)
+        cost = round(sum(line["cost"] for line in lines), 2)
+        profit = round(sales - cost, 2)
+        margin_pct = round(100 * profit / sales, 2) if sales else None
+        reason_codes: set[str] = set()
+        line_details = []
+        historical_hit = False
+        for line in lines:
+            flags = []
+            if line["sales"] > 0 and line["cost"] <= 0:
+                flags.append("zero_cost")
+                reason_codes.add("zero_cost")
+            if line["cost"] > line["sales"]:
+                flags.append("cost_over_sales")
+                reason_codes.add("cost_over_sales")
+            if line["sales"] <= 0 and line["cost"] > 0:
+                flags.append("nonpositive_sales_with_cost")
+                reason_codes.add("nonpositive_sales_with_cost")
+            baseline = baselines.get(line["item"])
+            if baseline is not None and line["margin_pct"] is not None and line["margin_pct"] <= baseline - deviation_points:
+                flags.append("historical_item_deviation")
+                reason_codes.add("historical_item_deviation")
+                historical_hit = True
+            line_details.append({
+                "line_sequence": line["line_sequence"], "item": line["item"],
+                "description": line["description"], "sales": line["sales"],
+                "cost": line["cost"], "profit": line["profit"],
+                "margin_pct": line["margin_pct"], "historical_margin_pct": baseline,
+                "flags": flags,
+            })
+        if profit < 0:
+            reason_codes.add("negative_margin")
+        if margin_pct is not None and margin_pct < minimum_margin_pct:
+            reason_codes.add("below_20_margin")
+        if not reason_codes:
+            continue
+        critical = bool(reason_codes & {"negative_margin", "zero_cost", "cost_over_sales", "nonpositive_sales_with_cost"})
+        severity = "Critical" if critical else "Low Margin" if "below_20_margin" in reason_codes else "Historical Outlier"
+        severity_rank = {"Critical": 0, "Low Margin": 1, "Historical Outlier": 2}[severity]
+        line_details.sort(key=lambda line: (not bool(line["flags"]), line["margin_pct"] if line["margin_pct"] is not None else 999, line["line_sequence"]))
+        first = lines[0]
+        header_sales, header_cost = first["header_sales"], first["header_cost"]
+        exceptions.append({
+            "sop": sop, "document_date": first["document_date"].isoformat(),
+            "posted_date": first["posted_date"].isoformat(), "customer": first["customer"],
+            "salesperson": first["salesperson"], "salesperson_name": first["salesperson_name"],
+            "location": first["location"], "sales": sales, "cost": cost,
+            "profit": profit, "margin_pct": margin_pct, "severity": severity,
+            "reason_codes": sorted(reason_codes), "line_count": len(lines),
+            "header_sales": header_sales, "header_cost": header_cost,
+            "header_line_reconciled": abs(header_sales - sales) <= 0.01 and abs(header_cost - cost) <= 0.01,
+            "worst_lines": line_details[:5], "_severity_rank": severity_rank,
+            "_historical_hit": historical_hit,
+        })
+    exceptions.sort(key=lambda row: (row["_severity_rank"], row["margin_pct"] if row["margin_pct"] is not None else 999, row["sop"]))
+    for row in exceptions:
+        row.pop("_severity_rank", None)
+        row.pop("_historical_hit", None)
+    return {
+        "as_of": as_of.isoformat(), "window_days": window_days,
+        "thresholds": {
+            "minimum_margin_pct": minimum_margin_pct,
+            "historical_deviation_points": deviation_points,
+            "minimum_history_lines": minimum_history_lines,
+        },
+        "summary": {
+            "exceptions": len(exceptions),
+            "critical": sum(row["severity"] == "Critical" for row in exceptions),
+            "below_20_margin": sum("below_20_margin" in row["reason_codes"] for row in exceptions),
+            "historical_outlier": sum("historical_item_deviation" in row["reason_codes"] for row in exceptions),
+            "sales": round(sum(row["sales"] for row in exceptions), 2),
+            "profit": round(sum(row["profit"] for row in exceptions), 2),
+        },
+        "invoices": exceptions,
+    }
+
+
 def build_today_activity(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     activity = {"tickets": {"count": 0, "amount": 0.0}, "invoices": {"count": 0, "amount": 0.0}}
     for row in rows:
@@ -604,11 +764,20 @@ def extract() -> dict[str, Any]:
         order_rows = [dict(zip(order_cols, row)) for row in cursor.execute(OPEN_ORDER_SQL).fetchall()]
         activity_cols = ["metric", "count", "amount"]
         activity_rows = [dict(zip(activity_cols, row)) for row in cursor.execute(TODAY_ACTIVITY_SQL).fetchall()]
+        margin_cols = [
+            "sop", "document_date", "posted_date", "customer", "salesperson", "salesperson_name",
+            "location", "header_sales", "header_cost", "line_sequence", "item", "description",
+            "line_sales", "line_cost",
+        ]
+        margin_rows = [dict(zip(margin_cols, row)) for row in cursor.execute(MARGIN_EXCEPTION_SQL).fetchall()]
         weekly_cols = ["sop", "created_date", "salesperson", "salesperson_name", "location", "subtotal", "line_items", "stock_total", "stock_cost", "status"]
         weekly_rows = [dict(zip(weekly_cols, row)) for row in cursor.execute(WEEKLY_ORDER_SQL).fetchall()]
     snapshot = build_snapshot(transaction_rows)
     snapshot["open_orders"] = build_open_orders(order_rows)
     snapshot["today_activity"] = build_today_activity(activity_rows)
+    snapshot["margin_exceptions"] = build_margin_exceptions(
+        margin_rows, as_of=dt.date.fromisoformat(snapshot["as_of"])
+    )
     snapshot["weekly_reports"] = build_weekly_reports(weekly_rows)
     snapshot["today"] = {
         "tickets_written": snapshot["today_activity"]["tickets"]["count"],
