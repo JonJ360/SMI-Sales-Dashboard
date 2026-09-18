@@ -66,6 +66,28 @@ class PublishSnapshotRetryTests(unittest.TestCase):
         self.assertEqual(urlopen.call_count, 2)
         sleep.assert_called_once_with(2)
 
+    @mock.patch.object(publish_snapshot.time, "sleep")
+    @mock.patch.object(publish_snapshot.urllib.request, "urlopen")
+    def test_rpc_retries_transient_http_521(self, urlopen, sleep):
+        urlopen.side_effect = [
+            publish_snapshot.urllib.error.HTTPError("https://example.test", 521, "origin down", {}, io.BytesIO(b"error code: 521")),
+            _Response(180),
+        ]
+
+        result = publish_snapshot.rpc("https://example.test", "key", "token", "stage", {"x": 1})
+
+        self.assertEqual(result, 180)
+        self.assertEqual(urlopen.call_count, 2)
+        sleep.assert_called_once_with(2)
+
+    @mock.patch.object(publish_snapshot.urllib.request, "urlopen")
+    def test_rpc_allows_two_minutes_for_large_snapshot_response(self, urlopen):
+        urlopen.return_value = _Response(181)
+
+        publish_snapshot.rpc("https://example.test", "key", "token", "stage", {"x": 1})
+
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], 120)
+
     @mock.patch.object(publish_snapshot, "load_credentials")
     @mock.patch.object(publish_snapshot, "rpc")
     def test_publish_skips_large_upload_when_source_is_unchanged(self, rpc, load_credentials):
