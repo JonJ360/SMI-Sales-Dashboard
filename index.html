@@ -36,7 +36,7 @@ button,input,select{font:inherit}.app{min-height:100vh;display:grid;grid-templat
 <div class="lock" id="lock"><div class="lock-card"><div class="lock-logo">SMI</div><h2>Sales Intelligence</h2><p>Use the same secure account as the AR CRM.</p><label for="authUser">User</label><select id="authUser"><option value="jonj@360-llc.com">Jon</option><option value="ben@structuralfab.com">Ben</option><option value="kaley@360-llc.com">Kaley</option><option value="kelsey@360-llc.com">Kelsey</option><option value="randyj@smionline.com">Randy</option></select><label for="authPin">PIN</label><input id="authPin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" placeholder="6-digit PIN"><button id="loginBtn">Sign in</button><div class="lock-error" id="lockError"></div></div></div>
 <div class="app">
 <aside class="side">
-  <div class="brand"><div class="brand-mark">SMI</div><div><div class="eyebrow">Structural Materials</div><h1>Sales Intelligence</h1><div class="version">VERSION 1.10</div></div></div>
+  <div class="brand"><div class="brand-mark">SMI</div><div><div class="eyebrow">Structural Materials</div><h1>Sales Intelligence</h1><div class="version">VERSION 1.11</div></div></div>
   <nav class="nav" aria-label="Report sections">
     <button class="active" data-view="overview">Overview</button>
     <button data-view="salespeople">Salespeople</button>
@@ -88,7 +88,7 @@ button,input,select{font:inherit}.app{min-height:100vh;display:grid;grid-templat
       <div class="card kpi"><div class="k-label">Below 10%</div><div class="k-value" id="marginLowKpi">0</div><div class="k-sub">Invoice profit below threshold</div></div>
       <div class="card kpi"><div class="k-label">Historical Outliers</div><div class="k-value" id="marginHistoricalKpi">0</div><div class="k-sub">Item margin ≥15 points below history</div></div>
     </div>
-    <div class="panel"><div class="panel-head"><span class="panel-title">Posted Invoice Margin Review</span><span class="panel-note">Posted invoices · raw GP line cost · rebar, freight, local delivery, and item 7518 excluded</span></div><div class="panel-body">
+    <div class="panel"><div class="panel-head"><span class="panel-title">Posted Invoice Margin Review</span><span class="panel-note">Posted invoices · raw GP line cost · rebar, MISC items, freight, local delivery, and item 7518 excluded</span></div><div class="panel-body">
       <div class="table-tools"><div class="margin-controls"><select id="marginRange" aria-label="Margin report range"><option value="day">Day</option><option value="week">Week</option></select><input id="marginDate" type="date" aria-label="Margin report date"><input class="search" id="marginSearch" placeholder="Search invoice, customer, salesperson or item"></div><span class="pill" id="marginCount">0 exceptions</span></div>
       <div class="table-wrap"><table><thead><tr><th>Posted</th><th>Invoice</th><th>Customer</th><th>Salesperson</th><th>Severity</th><th class="num">Extended Price</th><th class="num">Extended Cost</th><th class="num">Profit</th><th class="num">Profit %</th><th>Why / Lines</th></tr></thead><tbody id="marginBody"></tbody></table></div>
     </div></div>

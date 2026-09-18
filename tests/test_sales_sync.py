@@ -120,12 +120,18 @@ class SalesSyncTests(unittest.TestCase):
              "header_sales": 100, "header_cost": 99, "line_sequence": 1,
              "item": "S1", "description": "Other steel", "item_class": "STEEL", "category_1": "61",
              "line_sales": 100, "line_cost": 99},
+            {"sop": "MISC-CLASS", "document_date": "2026-09-17", "posted_date": "2026-09-17",
+             "customer": "Misc Co", "salesperson": "SAM", "location": "FARGO",
+             "header_sales": 100, "header_cost": 0, "line_sequence": 1,
+             "item": "COMMENT", "description": "Comment", "item_class": "MISC", "category_1": "TOOLS",
+             "line_sales": 100, "line_cost": 0},
         ]
 
         report = build_margin_exceptions(rows, as_of=dt.date(2026, 9, 17))
 
         self.assertEqual([row["sop"] for row in report["invoices"]], ["OTHER-STEEL"])
         self.assertEqual(report["excluded_rebar_rule"], {"item_classes": ["REBAR"], "steel_category_1": ["50"]})
+        self.assertEqual(report["excluded_item_classes"], ["MISC"])
 
     def test_source_hash_ignores_refresh_timestamp(self):
         first = {"company": "SMI", "sales": 100, "refreshed_at": "2026-09-14T19:00:00+00:00"}

@@ -566,7 +566,7 @@ def build_margin_exceptions(
         item_class = str(source.get("item_class") or "").strip().upper()
         category_1 = str(source.get("category_1") or "").strip().upper()
         is_rebar = item_class == "REBAR" or (item_class == "STEEL" and category_1 == "50")
-        if item in MARGIN_EXCLUDED_ITEM_NUMBERS or is_rebar:
+        if item in MARGIN_EXCLUDED_ITEM_NUMBERS or is_rebar or item_class == "MISC":
             continue
         sales = round(float(source.get("line_sales") or 0), 2)
         cost = round(float(source.get("line_cost") or 0), 2)
@@ -666,6 +666,7 @@ def build_margin_exceptions(
     return {
         "as_of": as_of.isoformat(), "window_days": window_days,
         "excluded_item_numbers": sorted(MARGIN_EXCLUDED_ITEM_NUMBERS),
+        "excluded_item_classes": ["MISC"],
         "excluded_rebar_rule": {"item_classes": ["REBAR"], "steel_category_1": ["50"]},
         "thresholds": {
             "minimum_margin_pct": minimum_margin_pct,
