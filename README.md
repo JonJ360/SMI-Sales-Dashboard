@@ -26,6 +26,7 @@ Live, authenticated sales reporting sourced from read-only Dynamics GP SQL. It p
 - Margin price and cost use raw `SOP30300.XTNDPRCE` and `SOP30300.EXTDCOST`; the normal dashboard cost guard is deliberately not applied
 - Exceptions include negative/zero-cost issues, invoice margin below 20%, and item margin at least 15 percentage points below its historical median
 - Historical item comparison requires at least 5 prior posted lines and $500 of prior sales within the trailing 395-day extraction
+- Miscellaneous item number `7518` is excluded from margin calculations and historical baselines
 - Margin Exceptions is dashboard-only and refreshes through the existing live snapshot pipeline
 
 ## Refresh

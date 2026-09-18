@@ -20,6 +20,7 @@ SERVER = "192.168.1.25,50497"
 DATABASE = "SMI"
 SOURCE = "dbo.SalesTransactions"
 YEARS = (2024, 2025, 2026)
+MARGIN_EXCLUDED_ITEM_NUMBERS = frozenset({"7518"})
 
 TRANSACTION_SQL = """
 WITH transactions AS (
@@ -558,6 +559,9 @@ def build_margin_exceptions(
         posted_date = _date(source.get("posted_date"))
         if posted_date > as_of:
             continue
+        item = str(source.get("item") or "Non-inventory").strip() or "Non-inventory"
+        if item in MARGIN_EXCLUDED_ITEM_NUMBERS:
+            continue
         sales = round(float(source.get("line_sales") or 0), 2)
         cost = round(float(source.get("line_cost") or 0), 2)
         normalized.append({
@@ -571,7 +575,7 @@ def build_margin_exceptions(
             "header_sales": round(float(source.get("header_sales") or 0), 2),
             "header_cost": round(float(source.get("header_cost") or 0), 2),
             "line_sequence": int(source.get("line_sequence") or 0),
-            "item": str(source.get("item") or "Non-inventory").strip() or "Non-inventory",
+            "item": item,
             "description": str(source.get("description") or "").strip(),
             "sales": sales,
             "cost": cost,
@@ -655,6 +659,7 @@ def build_margin_exceptions(
         row.pop("_historical_hit", None)
     return {
         "as_of": as_of.isoformat(), "window_days": window_days,
+        "excluded_item_numbers": sorted(MARGIN_EXCLUDED_ITEM_NUMBERS),
         "thresholds": {
             "minimum_margin_pct": minimum_margin_pct,
             "historical_deviation_points": deviation_points,

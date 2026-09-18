@@ -72,6 +72,28 @@ class SalesSyncTests(unittest.TestCase):
         self.assertEqual(report["summary"]["exceptions"], 3)
         self.assertEqual(report["thresholds"]["minimum_margin_pct"], 20.0)
 
+    def test_margin_exceptions_exclude_miscellaneous_item_7518_from_calculation(self):
+        rows = [
+            {"sop": "MISC-ONLY", "document_date": "2026-09-17", "posted_date": "2026-09-17",
+             "customer": "Misc Co", "salesperson": "SAM", "location": "FARGO",
+             "header_sales": 100, "header_cost": 200, "line_sequence": 1,
+             "item": "7518", "description": "Miscellaneous", "line_sales": 100, "line_cost": 200},
+            {"sop": "MIXED", "document_date": "2026-09-17", "posted_date": "2026-09-17",
+             "customer": "Mixed Co", "salesperson": "SAM", "location": "FARGO",
+             "header_sales": 200, "header_cost": 270, "line_sequence": 1,
+             "item": "A", "description": "Normal item", "line_sales": 100, "line_cost": 70},
+            {"sop": "MIXED", "document_date": "2026-09-17", "posted_date": "2026-09-17",
+             "customer": "Mixed Co", "salesperson": "SAM", "location": "FARGO",
+             "header_sales": 200, "header_cost": 270, "line_sequence": 2,
+             "item": "7518", "description": "Miscellaneous", "line_sales": 100, "line_cost": 200},
+        ]
+
+        report = build_margin_exceptions(rows, as_of=dt.date(2026, 9, 17))
+
+        self.assertEqual(report["invoices"], [])
+        self.assertEqual(report["summary"]["exceptions"], 0)
+        self.assertEqual(report["excluded_item_numbers"], ["7518"])
+
     def test_source_hash_ignores_refresh_timestamp(self):
         first = {"company": "SMI", "sales": 100, "refreshed_at": "2026-09-14T19:00:00+00:00"}
         second = {**first, "refreshed_at": "2026-09-14T19:05:00+00:00"}
