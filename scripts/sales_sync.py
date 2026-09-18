@@ -20,7 +20,9 @@ SERVER = "192.168.1.25,50497"
 DATABASE = "SMI"
 SOURCE = "dbo.SalesTransactions"
 YEARS = (2024, 2025, 2026)
-MARGIN_EXCLUDED_ITEM_NUMBERS = frozenset({"7518", "FREIGHT", "LFS"})
+MARGIN_EXCLUDED_ITEM_NUMBERS = frozenset({
+    "207527", "41389", "41390", "7518", "FREIGHT", "LFS", "U1700",
+})
 
 TRANSACTION_SQL = """
 WITH transactions AS (

@@ -96,12 +96,25 @@ class SalesSyncTests(unittest.TestCase):
              "header_sales": 100, "header_cost": 0, "line_sequence": 1,
              "item": "LFS", "description": "Local Delivery", "line_sales": 100, "line_cost": 0},
         ]
+        for item, description in (
+            ("207527", "Rental of Tools"), ("41389", "Misc - Steel"),
+            ("41390", "Misc - Tools"), ("U1700", "Used Tools"),
+        ):
+            rows.append({
+                "sop": f"EXCLUDE-{item}", "document_date": "2026-09-17", "posted_date": "2026-09-17",
+                "customer": "Excluded Co", "salesperson": "SAM", "location": "FARGO",
+                "header_sales": 100, "header_cost": 0, "line_sequence": 1,
+                "item": item, "description": description, "line_sales": 100, "line_cost": 0,
+            })
 
         report = build_margin_exceptions(rows, as_of=dt.date(2026, 9, 17))
 
         self.assertEqual(report["invoices"], [])
         self.assertEqual(report["summary"]["exceptions"], 0)
-        self.assertEqual(report["excluded_item_numbers"], ["7518", "FREIGHT", "LFS"])
+        self.assertEqual(
+            report["excluded_item_numbers"],
+            ["207527", "41389", "41390", "7518", "FREIGHT", "LFS", "U1700"],
+        )
 
     def test_margin_exceptions_exclude_gp_rebar_classes_from_calculation(self):
         rows = [

@@ -26,7 +26,7 @@ Live, authenticated sales reporting sourced from read-only Dynamics GP SQL. It p
 - Margin price and cost use raw `SOP30300.XTNDPRCE` and `SOP30300.EXTDCOST`; the normal dashboard cost guard is deliberately not applied
 - Exceptions include negative/zero-cost issues, invoice margin below 10%, and item margin at least 15 percentage points below its historical median
 - Historical item comparison requires at least 5 prior posted lines and $500 of prior sales within the trailing 395-day extraction
-- Noncost charge items `7518`, `FREIGHT`, and `LFS` (local delivery) are excluded from margin calculations and historical baselines
+- Approved noncost or non-margin items `7518`, `FREIGHT`, `LFS`, `207527`, `41389`, `41390`, and `U1700` are excluded from margin calculations and historical baselines
 - GP item class `MISC` is excluded from margin calculations and historical baselines
 - Rebar is excluded using GP item master rules: item class `REBAR`, or item class `STEEL` with user category 1 equal to `50`
 - The dashboard defaults to the latest posting day and supports selectable day or Sunday–Saturday week views
