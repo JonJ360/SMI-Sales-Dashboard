@@ -26,6 +26,7 @@ class SalesSyncTests(unittest.TestCase):
             "FROM dbo.SOP30200 h", "JOIN dbo.SOP30300 l",
             "h.SOPTYPE = 3", "h.VOIDSTTS = 0", "h.POSTEDDT",
             "l.XTNDPRCE", "l.EXTDCOST", "h.SUBTOTAL", "h.EXTDCOST",
+            "LEFT JOIN dbo.IV00101 i", "i.ITMCLSCD", "i.USCATVLS_1",
         ):
             self.assertIn(token, MARGIN_EXCEPTION_SQL)
         self.assertIn("l.SOPTYPE = h.SOPTYPE", MARGIN_EXCEPTION_SQL)
@@ -42,8 +43,8 @@ class SalesSyncTests(unittest.TestCase):
         recent = [
             {"sop": "LOW", "document_date": "2026-09-17", "posted_date": "2026-09-17",
              "customer": "Low Co", "salesperson": "SAM", "location": "FARGO",
-             "header_sales": 100, "header_cost": 90, "line_sequence": 1,
-             "item": "A", "description": "Widget", "line_sales": 100, "line_cost": 90},
+             "header_sales": 100, "header_cost": 91, "line_sequence": 1,
+             "item": "A", "description": "Widget", "line_sales": 100, "line_cost": 91},
             {"sop": "ZERO", "document_date": "2026-09-17", "posted_date": "2026-09-17",
              "customer": "Zero Co", "salesperson": "SAM", "location": "FARGO",
              "header_sales": 100, "header_cost": 0, "line_sequence": 1,
@@ -66,11 +67,11 @@ class SalesSyncTests(unittest.TestCase):
         self.assertEqual(by_sop["NEG"]["margin_pct"], -20.0)
         self.assertIn("negative_margin", by_sop["NEG"]["reason_codes"])
         self.assertIn("zero_cost", by_sop["ZERO"]["reason_codes"])
-        self.assertIn("below_20_margin", by_sop["LOW"]["reason_codes"])
+        self.assertIn("below_threshold_margin", by_sop["LOW"]["reason_codes"])
         self.assertIn("historical_item_deviation", by_sop["LOW"]["reason_codes"])
         self.assertEqual(by_sop["LOW"]["worst_lines"][0]["historical_margin_pct"], 30.0)
         self.assertEqual(report["summary"]["exceptions"], 3)
-        self.assertEqual(report["thresholds"]["minimum_margin_pct"], 20.0)
+        self.assertEqual(report["thresholds"]["minimum_margin_pct"], 10.0)
 
     def test_margin_exceptions_exclude_miscellaneous_item_7518_from_calculation(self):
         rows = [
@@ -93,6 +94,30 @@ class SalesSyncTests(unittest.TestCase):
         self.assertEqual(report["invoices"], [])
         self.assertEqual(report["summary"]["exceptions"], 0)
         self.assertEqual(report["excluded_item_numbers"], ["7518"])
+
+    def test_margin_exceptions_exclude_gp_rebar_classes_from_calculation(self):
+        rows = [
+            {"sop": "REBAR-CLASS", "document_date": "2026-09-17", "posted_date": "2026-09-17",
+             "customer": "Rebar Co", "salesperson": "SAM", "location": "FARGO",
+             "header_sales": 100, "header_cost": 99, "line_sequence": 1,
+             "item": "GATOR3", "description": "Gatorbar", "item_class": "REBAR", "category_1": "50",
+             "line_sales": 100, "line_cost": 99},
+            {"sop": "STEEL-50", "document_date": "2026-09-17", "posted_date": "2026-09-17",
+             "customer": "Steel Co", "salesperson": "SAM", "location": "FARGO",
+             "header_sales": 100, "header_cost": 99, "line_sequence": 1,
+             "item": "R46020", "description": "Rebar", "item_class": "STEEL", "category_1": "50",
+             "line_sales": 100, "line_cost": 99},
+            {"sop": "OTHER-STEEL", "document_date": "2026-09-17", "posted_date": "2026-09-17",
+             "customer": "Other Steel", "salesperson": "SAM", "location": "FARGO",
+             "header_sales": 100, "header_cost": 99, "line_sequence": 1,
+             "item": "S1", "description": "Other steel", "item_class": "STEEL", "category_1": "61",
+             "line_sales": 100, "line_cost": 99},
+        ]
+
+        report = build_margin_exceptions(rows, as_of=dt.date(2026, 9, 17))
+
+        self.assertEqual([row["sop"] for row in report["invoices"]], ["OTHER-STEEL"])
+        self.assertEqual(report["excluded_rebar_rule"], {"item_classes": ["REBAR"], "steel_category_1": ["50"]})
 
     def test_source_hash_ignores_refresh_timestamp(self):
         first = {"company": "SMI", "sales": 100, "refreshed_at": "2026-09-14T19:00:00+00:00"}
@@ -361,7 +386,7 @@ class SalesSyncTests(unittest.TestCase):
     def test_extract_includes_margin_exception_report(self):
         row = (
             "LOW", dt.date(2026, 9, 17), dt.date(2026, 9, 17), "Low Co", "SAM", "Sam Seller",
-            "FARGO", 100, 90, 1, "A", "Widget", 100, 90,
+            "FARGO", 100, 91, 1, "A", "Widget", "TOOLS", "TOOLS", 100, 91,
         )
 
         class FakeCursor:

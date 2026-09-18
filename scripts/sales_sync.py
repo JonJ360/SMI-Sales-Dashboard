@@ -116,11 +116,14 @@ SELECT
   l.LNITMSEQ AS line_sequence,
   LTRIM(RTRIM(l.ITEMNMBR)) AS item,
   LTRIM(RTRIM(l.ITEMDESC)) AS description,
+  LTRIM(RTRIM(COALESCE(i.ITMCLSCD, ''))) AS item_class,
+  LTRIM(RTRIM(COALESCE(i.USCATVLS_1, ''))) AS category_1,
   CAST(l.XTNDPRCE AS decimal(19,2)) AS line_sales,
   CAST(l.EXTDCOST AS decimal(19,2)) AS line_cost
 FROM dbo.SOP30200 h
 JOIN dbo.SOP30300 l
   ON l.SOPTYPE = h.SOPTYPE AND l.SOPNUMBE = h.SOPNUMBE
+LEFT JOIN dbo.IV00101 i ON i.ITEMNMBR = l.ITEMNMBR
 LEFT JOIN salesperson_names n ON n.salesperson = LTRIM(RTRIM(h.SLPRSNID))
 WHERE h.SOPTYPE = 3
   AND h.VOIDSTTS = 0
@@ -548,7 +551,7 @@ def build_open_orders(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
 
 def build_margin_exceptions(
     rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = None,
-    window_days: int = 30, minimum_margin_pct: float = 20.0,
+    window_days: int = 30, minimum_margin_pct: float = 10.0,
     deviation_points: float = 15.0, minimum_history_lines: int = 5,
 ) -> dict[str, Any]:
     """Build a raw-cost posted-invoice exception report without dashboard cost guards."""
@@ -560,7 +563,10 @@ def build_margin_exceptions(
         if posted_date > as_of:
             continue
         item = str(source.get("item") or "Non-inventory").strip() or "Non-inventory"
-        if item in MARGIN_EXCLUDED_ITEM_NUMBERS:
+        item_class = str(source.get("item_class") or "").strip().upper()
+        category_1 = str(source.get("category_1") or "").strip().upper()
+        is_rebar = item_class == "REBAR" or (item_class == "STEEL" and category_1 == "50")
+        if item in MARGIN_EXCLUDED_ITEM_NUMBERS or is_rebar:
             continue
         sales = round(float(source.get("line_sales") or 0), 2)
         cost = round(float(source.get("line_cost") or 0), 2)
@@ -632,11 +638,11 @@ def build_margin_exceptions(
         if profit < 0:
             reason_codes.add("negative_margin")
         if margin_pct is not None and margin_pct < minimum_margin_pct:
-            reason_codes.add("below_20_margin")
+            reason_codes.add("below_threshold_margin")
         if not reason_codes:
             continue
         critical = bool(reason_codes & {"negative_margin", "zero_cost", "cost_over_sales", "nonpositive_sales_with_cost"})
-        severity = "Critical" if critical else "Low Margin" if "below_20_margin" in reason_codes else "Historical Outlier"
+        severity = "Critical" if critical else "Low Margin" if "below_threshold_margin" in reason_codes else "Historical Outlier"
         severity_rank = {"Critical": 0, "Low Margin": 1, "Historical Outlier": 2}[severity]
         line_details.sort(key=lambda line: (not bool(line["flags"]), line["margin_pct"] if line["margin_pct"] is not None else 999, line["line_sequence"]))
         first = lines[0]
@@ -660,6 +666,7 @@ def build_margin_exceptions(
     return {
         "as_of": as_of.isoformat(), "window_days": window_days,
         "excluded_item_numbers": sorted(MARGIN_EXCLUDED_ITEM_NUMBERS),
+        "excluded_rebar_rule": {"item_classes": ["REBAR"], "steel_category_1": ["50"]},
         "thresholds": {
             "minimum_margin_pct": minimum_margin_pct,
             "historical_deviation_points": deviation_points,
@@ -668,7 +675,7 @@ def build_margin_exceptions(
         "summary": {
             "exceptions": len(exceptions),
             "critical": sum(row["severity"] == "Critical" for row in exceptions),
-            "below_20_margin": sum("below_20_margin" in row["reason_codes"] for row in exceptions),
+            "below_threshold_margin": sum("below_threshold_margin" in row["reason_codes"] for row in exceptions),
             "historical_outlier": sum("historical_item_deviation" in row["reason_codes"] for row in exceptions),
             "sales": round(sum(row["sales"] for row in exceptions), 2),
             "profit": round(sum(row["profit"] for row in exceptions), 2),
@@ -772,7 +779,7 @@ def extract() -> dict[str, Any]:
         margin_cols = [
             "sop", "document_date", "posted_date", "customer", "salesperson", "salesperson_name",
             "location", "header_sales", "header_cost", "line_sequence", "item", "description",
-            "line_sales", "line_cost",
+            "item_class", "category_1", "line_sales", "line_cost",
         ]
         margin_rows = [dict(zip(margin_cols, row)) for row in cursor.execute(MARGIN_EXCEPTION_SQL).fetchall()]
         weekly_cols = ["sop", "created_date", "salesperson", "salesperson_name", "location", "subtotal", "line_items", "stock_total", "stock_cost", "status"]

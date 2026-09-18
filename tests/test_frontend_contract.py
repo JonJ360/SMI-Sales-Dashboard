@@ -29,7 +29,9 @@ class FrontendContractTests(unittest.TestCase):
             'id="marginLowKpi"', 'id="marginHistoricalKpi"',
             "Extended Price", "Extended Cost", "Profit", "Profit %",
             "renderMarginExceptions", "reasonLabel", "worst_lines",
-            "Posted invoices · raw GP line cost · trailing 30 days",
+            "Posted invoices · raw GP line cost", 'id="marginRange"',
+            'id="marginDate"', "marginDateBounds", "marginDateWindow",
+            "Below 10%",
         ):
             self.assertIn(token, html)
 
@@ -182,7 +184,7 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_version_is_visible_beneath_top_left_brand_on_mobile_and_desktop(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
-        self.assertIn('<div class="version">VERSION 1.8</div>', html)
+        self.assertIn('<div class="version">VERSION 1.9</div>', html)
         self.assertNotIn("VERSION 1.3", html)
         self.assertNotIn(".brand .eyebrow,.version,.side-foot{display:none}", html)
 
