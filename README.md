@@ -11,6 +11,7 @@ Live, authenticated sales reporting sourced from read-only Dynamics GP SQL. It p
 - Invoice count = distinct invoice SOP number
 - Open orders = remaining subtotal on normal, unposted orders
 - Periods: rolling 30 days (`1M`), YTD, any selectable month, and 2024–2026 history through the current as-of date
+- Overview, Salespeople, Branches, and Customers each retain their own period and month filter; Open Orders is current-only, while Weekly Report and Margin Exceptions keep their dedicated controls
 - Like-for-like comparisons: prior-year rolling 30-day, YTD, and month; the 2024–2026 window compares with 2021–2023 through the same month/day cutoff
 - All-salespeople report shows current-period sales, comparable prior-period sales, and dollar change
 - Click-through salesperson detail uses the selected period for customer rankings and totals, with phone-friendly customer cards

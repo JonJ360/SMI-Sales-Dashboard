@@ -10,11 +10,17 @@ class FrontendContractTests(unittest.TestCase):
         for token in ("Tickets Written Today", "Invoices Posted Today", 'id="ticketsTodayKpi"', 'id="invoicesTodayKpi"', "today_activity"):
             self.assertIn(token, html)
 
-    def test_asset_tracker_blue_tokens_and_one_month_control_exist(self):
+    def test_asset_tracker_blue_tokens_and_independent_tab_filters_exist(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
         for token in ("#E9ECF1", "#FFFFFF", "#222A33", "#2E6FD9", "#1F5AB8"):
             self.assertIn(token, html)
-        self.assertIn('data-period="1M"', html)
+        for view in ("overview", "salespeople", "branches", "customers"):
+            self.assertIn(f'id="{view}Period"', html)
+            self.assertIn(f'id="{view}Month"', html)
+        self.assertIn("viewFilters", html)
+        self.assertIn("bindPeriodFilter", html)
+        self.assertNotIn('id="monthSelect"', html)
+        self.assertNotIn('data-period="1M"', html)
 
     def test_power_bi_report_sections_exist(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
@@ -92,7 +98,8 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_sales_drilldown_month_and_comparison_controls_exist(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
-        self.assertIn('id="monthSelect"', html)
+        self.assertIn('id="salespeopleMonth"', html)
+        self.assertIn('id="customersMonth"', html)
         self.assertIn('id="salespersonDrawer"', html)
         self.assertIn("openSalesperson", html)
         self.assertIn("vs. prior year", html)
@@ -112,7 +119,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("customerDollarChange(x.current_sales,x.prior_sales)", html)
         self.assertNotIn("state.period==='FULL'?null:c.prior", html)
         self.assertIn("function comparisonName", html)
-        self.assertIn("state.period==='FULL'?'prior 3 years':'prior year'", html)
+        self.assertIn("filterForView(view).period==='FULL'?'prior 3 years':'prior year'", html)
 
     def test_salesperson_drilldown_uses_month_over_month_columns(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
@@ -162,7 +169,7 @@ class FrontendContractTests(unittest.TestCase):
     def test_salesperson_drilldown_uses_selected_period_customer_totals(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
         self.assertIn("function selectedSalespersonDetail", html)
-        self.assertIn("const selected=selectedSalespersonDetail(detail)", html)
+        self.assertIn("const selected=selectedSalespersonDetail(detail,view)", html)
         self.assertIn("selected.customers.slice(0,12)", html)
         self.assertIn("Selected period", html)
         self.assertNotIn("detail.customers.slice(0,12)", html)
@@ -175,16 +182,16 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_prior_year_top_25_customers_show_last_year_this_year_and_dollar_change(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
-        self.assertIn("Prior-Year Top 25 Customers — Year-over-Year", html)
-        self.assertIn("Last Year", html)
-        self.assertIn("This Year", html)
+        self.assertIn("Top 25 Customers — Period Comparison", html)
+        self.assertIn("Prior-Period Sales", html)
+        self.assertIn("Current Sales", html)
         self.assertIn("Dollar Change", html)
         self.assertIn("function customerDollarChange", html)
         self.assertNotIn('id="customerComparisonBody"', html)
 
     def test_version_is_visible_beneath_top_left_brand_on_mobile_and_desktop(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
-        self.assertIn('<div class="version">VERSION 1.13</div>', html)
+        self.assertIn('<div class="version">VERSION 1.14</div>', html)
         self.assertNotIn("VERSION 1.3", html)
         self.assertNotIn(".brand .eyebrow,.version,.side-foot{display:none}", html)
 
