@@ -97,8 +97,14 @@ class SalesSyncTests(unittest.TestCase):
              "item": "LFS", "description": "Local Delivery", "line_sales": 100, "line_cost": 0},
         ]
         for item, description in (
-            ("207527", "Rental of Tools"), ("41389", "Misc - Steel"),
-            ("41390", "Misc - Tools"), ("U1700", "Used Tools"),
+            ("107517", "Labor - Tool Repair"), ("207527", "Rental of Tools"),
+            ("227528", "Rental of Pan Forms"), ("41389", "Misc - Steel"),
+            ("41390", "Misc - Tools"), ("7519", "Diagnostic Testing Equipment"),
+            ("CREDIT CARD SURCHARGE", "Credit Card Surcharge"), ("DC", "Drop Charge"),
+            ("DOSENGO", "Helix Air Doser Rental"), ("LFSB", "Fuel Surcharge"),
+            ("LOGBR", "Logix Brace Rental"), ("MILEAGE", "Mileage"),
+            ("RV41390", "RV Misc - Tools"), ("SURCHARGE", "Surcharge"),
+            ("U1700", "Used Tools"),
         ):
             rows.append({
                 "sop": f"EXCLUDE-{item}", "document_date": "2026-09-17", "posted_date": "2026-09-17",
@@ -113,7 +119,11 @@ class SalesSyncTests(unittest.TestCase):
         self.assertEqual(report["summary"]["exceptions"], 0)
         self.assertEqual(
             report["excluded_item_numbers"],
-            ["207527", "41389", "41390", "7518", "FREIGHT", "LFS", "U1700"],
+            [
+                "107517", "207527", "227528", "41389", "41390", "7518", "7519",
+                "CREDIT CARD SURCHARGE", "DC", "DOSENGO", "FREIGHT", "LFS", "LFSB",
+                "LOGBR", "MILEAGE", "RV41390", "SURCHARGE", "U1700",
+            ],
         )
 
     def test_margin_exceptions_exclude_gp_rebar_classes_from_calculation(self):
