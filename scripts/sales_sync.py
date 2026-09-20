@@ -162,9 +162,7 @@ WITH header_source AS (
          COUNT(*) AS line_items,
          SUM(CASE WHEN i.ITEMTYPE = 1 THEN CAST(l.XTNDPRCE AS decimal(19,2)) ELSE 0 END) AS stock_total,
          SUM(CASE WHEN i.ITEMTYPE = 1 THEN
-               CASE WHEN ABS(l.EXTDCOST) > ABS(l.XTNDPRCE)
-                    THEN ABS(CAST(l.XTNDPRCE AS decimal(19,2))) * 0.10
-                    ELSE ABS(CAST(l.EXTDCOST AS decimal(19,2))) END
+               ABS(CAST(l.EXTDCOST AS decimal(19,2)))
              ELSE 0 END) AS stock_cost
   FROM dbo.SOP10200 l
   JOIN headers h ON h.rn = 1 AND h.record_status = 'open'
@@ -176,9 +174,7 @@ WITH header_source AS (
   SELECT 'history', LTRIM(RTRIM(l.SOPNUMBE)), COUNT(*),
          SUM(CASE WHEN i.ITEMTYPE = 1 THEN CAST(l.XTNDPRCE AS decimal(19,2)) ELSE 0 END),
          SUM(CASE WHEN i.ITEMTYPE = 1 THEN
-               CASE WHEN ABS(l.EXTDCOST) > ABS(l.XTNDPRCE)
-                    THEN ABS(CAST(l.XTNDPRCE AS decimal(19,2))) * 0.10
-                    ELSE ABS(CAST(l.EXTDCOST AS decimal(19,2))) END
+               ABS(CAST(l.EXTDCOST AS decimal(19,2)))
              ELSE 0 END)
   FROM dbo.SOP30300 l
   JOIN headers h ON h.rn = 1 AND h.record_status = 'history'
@@ -268,7 +264,7 @@ def normalize_transaction(row: Mapping[str, Any]) -> dict[str, Any]:
     sales_magnitude = abs(round(float(row.get("sales") or 0), 2))
     raw_cost_value = row.get("extended_cost") if row.get("extended_cost") is not None else row.get("cost")
     raw_cost = abs(float(raw_cost_value or 0))
-    cost_magnitude = sales_magnitude * 0.10 if raw_cost > sales_magnitude else raw_cost
+    cost_magnitude = raw_cost  # Preserve source costs and losses; never estimate a margin.
     sales = sign * sales_magnitude
     cost = sign * round(cost_magnitude, 2)
     return {

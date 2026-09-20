@@ -169,7 +169,8 @@ class SalesSyncTests(unittest.TestCase):
         self.assertIn("VOIDSTTS = 0", WEEKLY_ORDER_SQL)
         self.assertIn("IV00101", WEEKLY_ORDER_SQL)
         self.assertIn("ITEMTYPE = 1", WEEKLY_ORDER_SQL)
-        self.assertIn("ABS(l.EXTDCOST) > ABS(l.XTNDPRCE)", WEEKLY_ORDER_SQL)
+        self.assertIn("ABS(CAST(l.EXTDCOST AS decimal(19,2)))", WEEKLY_ORDER_SQL)
+        self.assertNotIn("ABS(l.EXTDCOST) > ABS(l.XTNDPRCE)", WEEKLY_ORDER_SQL)
         self.assertIn("CREATDDT", WEEKLY_ORDER_SQL)
         self.assertIn("ROW_NUMBER() OVER", WEEKLY_ORDER_SQL)
 
@@ -219,11 +220,11 @@ class SalesSyncTests(unittest.TestCase):
     def test_ytd_period_starts_january_first(self):
         self.assertEqual(choose_period_start("YTD", dt.date(2026, 9, 13)), dt.date(2026, 1, 1))
 
-    def test_cost_guard_matches_power_bi_rule(self):
+    def test_cost_over_sales_preserves_loss(self):
         row = {"sop":"INV1","date":dt.date(2026, 9, 1),"customer":"ACME","salesperson":"RICK","location":"FARGO","sales":100.0,"extended_cost":140.0}
         normalized = normalize_invoice(row)
-        self.assertEqual(normalized["cost"], 10.0)
-        self.assertEqual(normalized["profit"], 90.0)
+        self.assertEqual(normalized["cost"], 140.0)
+        self.assertEqual(normalized["profit"], -40.0)
 
     def test_snapshot_counts_unique_invoices(self):
         rows = [

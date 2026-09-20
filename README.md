@@ -6,8 +6,9 @@ Live, authenticated sales reporting sourced from read-only Dynamics GP SQL. It p
 
 - Posted, normal invoices and returns
 - Net sales = invoice `Subtotal` less return `Subtotal`
-- Cost guard = 10% of sales when source extended cost exceeds sales
-- Profit = sales minus guarded cost
+- Cost = source extended-cost magnitude, rounded to cents and signed by invoice/return type; costs above sales are not replaced
+- Profit = net sales minus signed source cost; losses are retained
+- Zero/missing costs remain zero under the existing policy; profit is not fully costed or GL net income. Missing purchase-cost linkage is not repaired by this change.
 - Invoice count = distinct invoice SOP number
 - Open orders = remaining subtotal on normal, unposted orders
 - Periods: rolling 30 days (`1M`), YTD, any selectable month, and 2024–2026 history through the current as-of date
@@ -20,11 +21,11 @@ Live, authenticated sales reporting sourced from read-only Dynamics GP SQL. It p
 - Invoices posted today = distinct normal posted invoices by GP `Posted Date`, with `Subtotal` dollars
 - Weekly Report = live normal GP sales orders grouped Sunday–Saturday by `CREATDDT`
 - Weekly Total $ = order header `SUBTOTAL` (tax excluded)
-- Weekly stock metrics = inventory items with `IV00101.ITEMTYPE = 1`; cost uses the dashboard cost guard
+- Weekly stock metrics = inventory items with `IV00101.ITEMTYPE = 1`; cost uses the absolute source line extended cost, rounded to cents, without a cost-over-sales substitution
 - Weekly salesperson rows drill into their open or transferred/history order documents
 - The snapshot carries the current week plus the previous 15 weeks; Tickets Written Today opens the same report in Today mode
 - Margin Exceptions reviews posted, nonvoid SMI invoices from the trailing 30 days by GP posting date
-- Margin price and cost use raw `SOP30300.XTNDPRCE` and `SOP30300.EXTDCOST`; the normal dashboard cost guard is deliberately not applied
+- Margin price and cost use raw `SOP30300.XTNDPRCE` and `SOP30300.EXTDCOST`; screening thresholds and exclusions are independent of the sales/weekly cost policy
 - Exceptions include negative/zero-cost issues, invoice margin below 10%, and item margin at least 15 percentage points below its historical median
 - Historical item comparison requires at least 5 prior posted lines and $500 of prior sales within the trailing 395-day extraction
 - Approved noncost or non-margin items are excluded from margin calculations and historical baselines: `107517`, `207527`, `227528`, `41389`, `41390`, `7518`, `7519`, `CREDIT CARD SURCHARGE`, `DC`, `DOSENGO`, `FREIGHT`, `LFS`, `LFSB`, `LOGBR`, `MILEAGE`, `RV41390`, `SURCHARGE`, and `U1700`
@@ -57,5 +58,5 @@ GitHub Pages serves the static shell. The browser requires the same Supabase log
 ## Tests
 
 ```bash
-python -m unittest discover -s tests -q
+python -m pytest tests -q
 ```
