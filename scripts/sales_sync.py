@@ -198,6 +198,36 @@ WHERE h.rn = 1 AND h.created_date <= CAST(GETDATE() AS date)
 ORDER BY h.created_date DESC, h.sop
 """
 
+# Reuse the exact weekly header population and open/history preference. Detail
+# is separate from the existing aggregate query and never replaces its totals.
+WEEKLY_ORDER_LINE_SQL = WEEKLY_ORDER_SQL.split("), line_source AS (")[0] + """
+)
+SELECT h.sop, h.record_status AS status, l.LNITMSEQ AS line_sequence,
+       l.CMPNTSEQ AS component_sequence, LTRIM(RTRIM(l.ITEMNMBR)) AS item,
+       LTRIM(RTRIM(l.ITEMDESC)) AS description, CAST(l.QUANTITY AS float) AS quantity,
+       LTRIM(RTRIM(l.UOFM)) AS uom, i.ITEMTYPE AS item_type,
+       LTRIM(RTRIM(COALESCE(i.ITMCLSCD, ''))) AS item_class,
+       LTRIM(RTRIM(COALESCE(i.USCATVLS_1, ''))) AS category_1,
+       CAST(l.XTNDPRCE AS decimal(19,2)) AS sales,
+       CAST(l.EXTDCOST AS decimal(19,2)) AS raw_cost
+FROM headers h
+JOIN dbo.SOP10200 l ON h.SOPTYPE = l.SOPTYPE AND h.sop = LTRIM(RTRIM(l.SOPNUMBE))
+LEFT JOIN dbo.IV00101 i ON i.ITEMNMBR = l.ITEMNMBR
+WHERE h.rn = 1 AND h.record_status = 'open' AND h.created_date <= CAST(GETDATE() AS date)
+UNION ALL
+SELECT h.sop, h.record_status, l.LNITMSEQ, l.CMPNTSEQ,
+       LTRIM(RTRIM(l.ITEMNMBR)), LTRIM(RTRIM(l.ITEMDESC)), CAST(l.QUANTITY AS float),
+       LTRIM(RTRIM(l.UOFM)), i.ITEMTYPE,
+       LTRIM(RTRIM(COALESCE(i.ITMCLSCD, ''))), LTRIM(RTRIM(COALESCE(i.USCATVLS_1, ''))),
+       CAST(l.XTNDPRCE AS decimal(19,2)), CAST(l.EXTDCOST AS decimal(19,2))
+FROM headers h
+JOIN dbo.SOP30300 l ON h.SOPTYPE = l.SOPTYPE AND h.sop = LTRIM(RTRIM(l.SOPNUMBE))
+LEFT JOIN dbo.IV00101 i ON i.ITEMNMBR = l.ITEMNMBR
+WHERE h.rn = 1 AND h.record_status = 'history' AND h.created_date <= CAST(GETDATE() AS date)
+ORDER BY sop, status, line_sequence, component_sequence
+"""
+
+
 class _CredentialW(ctypes.Structure):
     _fields_ = [
         ("Flags", wintypes.DWORD), ("Type", wintypes.DWORD),
@@ -710,8 +740,67 @@ def _weekly_totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def build_weekly_order_lines(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """All source lines, with existing ITEMTYPE=1 stock contribution explicit.
+
+    Source cost signs are retained beside the V1.15 absolute-cost presentation.
+    Margin Exceptions exclusions are context only; no detail line is removed.
+    """
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for source in rows:
+        sop = str(source.get("sop") or "").strip()
+        if not sop:
+            continue
+        item = str(source.get("item") or "").strip()
+        item_class = str(source.get("item_class") or "").strip().upper()
+        category = str(source.get("category_1") or "").strip().upper()
+        item_type = source.get("item_type")
+        sales = round(float(source.get("sales") or 0), 2)
+        raw_cost = round(float(source.get("raw_cost") or 0), 2)
+        cost = abs(raw_cost)
+        included = item_type == 1
+        flags = []
+        if raw_cost < 0:
+            flags.append("negative_source_cost")
+        if cost > sales:
+            flags.append("cost_over_sales")
+        if not cost:
+            flags.append("zero_cost")
+        if sales <= 0 and cost > 0:
+            flags.append("nonpositive_sales_with_cost")
+        if not included:
+            flags.append("not_in_stock_totals")
+        if item_type is None:
+            flags.append("item_type_missing")
+        if item in MARGIN_EXCLUDED_ITEM_NUMBERS or item_class in {"MISC", "REBAR"} or (item_class == "STEEL" and category == "50"):
+            flags.append("margin_screen_excluded")
+        groups[f'{source.get("status", "history")}:{sop}'].append({
+            "line_sequence": int(source.get("line_sequence") or 0),
+            "component_sequence": int(source.get("component_sequence") or 0),
+            "item": item, "description": str(source.get("description") or "").strip(),
+            "quantity": float(source.get("quantity") or 0), "uom": str(source.get("uom") or "").strip(),
+            "item_type": int(item_type) if item_type is not None else None,
+            "item_class": item_class, "included_in_stock": included,
+            "sales": sales, "raw_cost": raw_cost, "cost": cost,
+            "profit": round(sales - cost, 2),
+            "margin_pct": round(100 * (sales - cost) / sales, 2) if sales else None,
+            "flags": flags,
+        })
+    result = {}
+    for key, lines in groups.items():
+        lines.sort(key=lambda line: (line["line_sequence"], line["component_sequence"]))
+        stock = [line for line in lines if line["included_in_stock"]]
+        stock_total = round(sum(line["sales"] for line in stock), 2)
+        stock_cost = round(sum(line["cost"] for line in stock), 2)
+        result[key] = {"lines": lines, "sales": round(sum(line["sales"] for line in lines), 2),
+                       "stock_total": stock_total, "stock_cost": stock_cost,
+                       "stock_profit": round(stock_total - stock_cost, 2)}
+    return result
+
+
 def build_weekly_reports(
-    rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = None, week_count: int = 16
+    rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = None, week_count: int = 16,
+    line_rows: Iterable[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     as_of = as_of or dt.date.today()
     unique: dict[str, dict[str, Any]] = {}
@@ -759,7 +848,23 @@ def build_weekly_reports(
         end = start + dt.timedelta(days=6)
         weeks.append(report([row for row in orders if start <= row["created_date"] <= end], start, end))
     today_report = report([row for row in orders if row["created_date"] == as_of], as_of, as_of)
-    return {"weeks": weeks, "today": today_report}
+    result = {"weeks": weeks, "today": today_report}
+    if line_rows is not None:
+        # Columnar transport avoids repeating field names for tens of thousands
+        # of rows; decoded values are lossless and shared by Today and weeks.
+        visible_keys = {f'{order["status"]}:{order["sop"]}'
+                        for week in [today_report, *weeks] for person in week["salespeople"] for order in person["orders"]}
+        details = {key: value for key, value in build_weekly_order_lines(line_rows).items() if key in visible_keys}
+        fields = []
+        for detail in details.values():
+            if detail["lines"]:
+                fields = list(detail["lines"][0])
+                break
+        for detail in details.values():
+            detail["lines"] = [[line[field] for field in fields] for line in detail["lines"]]
+        result["order_line_fields"] = fields
+        result["order_lines"] = details
+    return result
 
 
 def source_sha256(snapshot: dict[str, Any]) -> str:
@@ -785,13 +890,17 @@ def extract() -> dict[str, Any]:
         margin_rows = [dict(zip(margin_cols, row)) for row in cursor.execute(MARGIN_EXCEPTION_SQL).fetchall()]
         weekly_cols = ["sop", "created_date", "salesperson", "salesperson_name", "location", "subtotal", "line_items", "stock_total", "stock_cost", "status"]
         weekly_rows = [dict(zip(weekly_cols, row)) for row in cursor.execute(WEEKLY_ORDER_SQL).fetchall()]
+        weekly_line_cursor = cursor.execute(WEEKLY_ORDER_LINE_SQL)
+        weekly_line_cols = ["sop", "status", "line_sequence", "component_sequence", "item", "description",
+                            "quantity", "uom", "item_type", "item_class", "category_1", "sales", "raw_cost"]
+        weekly_line_rows = [dict(zip(weekly_line_cols, row)) for row in weekly_line_cursor.fetchall()]
     snapshot = build_snapshot(transaction_rows)
     snapshot["open_orders"] = build_open_orders(order_rows)
     snapshot["today_activity"] = build_today_activity(activity_rows)
     snapshot["margin_exceptions"] = build_margin_exceptions(
         margin_rows, as_of=dt.date.fromisoformat(snapshot["as_of"])
     )
-    snapshot["weekly_reports"] = build_weekly_reports(weekly_rows)
+    snapshot["weekly_reports"] = build_weekly_reports(weekly_rows, line_rows=weekly_line_rows)
     snapshot["today"] = {
         "tickets_written": snapshot["today_activity"]["tickets"]["count"],
         "invoices_posted": snapshot["today_activity"]["invoices"]["count"],

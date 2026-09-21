@@ -23,6 +23,10 @@ Live, authenticated sales reporting sourced from read-only Dynamics GP SQL. It p
 - Weekly Total $ = order header `SUBTOTAL` (tax excluded)
 - Weekly stock metrics = inventory items with `IV00101.ITEMTYPE = 1`; cost uses the absolute source line extended cost, rounded to cents, without a cost-over-sales substitution
 - Weekly salesperson rows drill into their open or transferred/history order documents
+- V1.16: expand any order number to see every source line, item ID/description, sequence/component, quantity/UOM, sales, signed source cost, absolute cost, profit/margin, and stock contribution
+- Line flags explain cost above price, zero/missing cost, nonpositive sales with cost, negative source cost, nonstock/missing item types, and items excluded only from the separate Margin Exceptions screen. Flags do not exclude lines or change costing.
+- Order detail preserves the V1.15 cost policy and all header/weekly totals. It shows stock reconciliation and all-line sales versus header subtotal; changes between sequential GP reads are disclosed rather than forced to balance. Orders are not posted-invoice/GL profit.
+- Detail shares the existing authenticated JSON snapshot, with lossless columnar `order_line_fields` / `order_lines` transport. Legacy snapshots show an explicit unavailable message, not fabricated lines.
 - The snapshot carries the current week plus the previous 15 weeks; Tickets Written Today opens the same report in Today mode
 - Margin Exceptions reviews posted, nonvoid SMI invoices from the trailing 30 days by GP posting date
 - Margin price and cost use raw `SOP30300.XTNDPRCE` and `SOP30300.EXTDCOST`; screening thresholds and exclusions are independent of the sales/weekly cost policy
