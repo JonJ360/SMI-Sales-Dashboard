@@ -45,6 +45,20 @@ python scripts/sales_sync.py --output data/sales.json
 python scripts/publish_snapshot.py --snapshot data/sales.json --credentials "%LOCALAPPDATA%/hermes/arcrm/credentials/current-ar.json"
 ```
 
+For an explicitly approved controlled recovery, the installed normal entrypoint accepts
+`python "%LOCALAPPDATA%/hermes/scripts/smi_sales_refresh.py" --single-attempt`.
+It still extracts and validates GP data, then stages/promotes/verifies using the existing scoped identities.
+The opt-in flag disables automatic retries for **every** publisher RPC, including staging,
+promotion, heartbeat and metadata; it is also accepted by `scripts/publish_snapshot.py`.
+Without it, the existing two-attempt transient-error behavior is unchanged.
+The five-minute Hermes job uses `smi_sales_refresh_scheduled.py`, which always passes
+`--single-attempt` to the normal entrypoint. Install both tracked `scripts/smi_sales_refresh*.py`
+files beside each other in the default profile scripts directory; only the scheduled
+entrypoint forces no-replay. Exceptions fail the job rather than retrying within a run.
+A timeout is indeterminate, not proof that the server did nothing: stop, inspect current
+metadata and server health, and do not blindly rerun. This flag does not resume a paused
+scheduler, acquire a job guard, or replace the fresh host-load/overlap safety checks.
+
 The SQL password and Supabase role tokens remain outside the repository. `data/sales.json` is local-only and ignored by Git.
 
 ## Local preview
