@@ -53,6 +53,21 @@ FROM transactions WHERE rn = 1
 ORDER BY document_date, sop
 """
 
+# Exact report header population; history lines joined by document type AND number.
+# Current selectable periods start in 2024; prior comparisons remain aggregate-only.
+INVOICE_LINE_SQL = TRANSACTION_SQL.split("SELECT sop, document_date")[0] + """
+SELECT t.kind, t.sop, l.LNITMSEQ AS line_sequence, l.CMPNTSEQ AS component_sequence,
+       LTRIM(RTRIM(l.ITEMNMBR)) AS item, LTRIM(RTRIM(l.ITEMDESC)) AS description,
+       CAST(l.QUANTITY AS float) AS quantity, LTRIM(RTRIM(l.UOFM)) AS uom,
+       CAST(l.XTNDPRCE AS decimal(19,2)) AS sales,
+       CAST(l.EXTDCOST AS decimal(19,2)) AS raw_cost
+FROM transactions t
+JOIN dbo.SOP30300 l ON l.SOPTYPE = CASE WHEN t.kind = 'Return' THEN 4 ELSE 3 END
+  AND LTRIM(RTRIM(l.SOPNUMBE)) = t.sop
+WHERE t.rn = 1 AND t.document_date >= '2024-01-01'
+ORDER BY t.kind, t.sop, l.LNITMSEQ, l.CMPNTSEQ
+"""
+
 OPEN_ORDER_SQL = """
 WITH orders AS (
   SELECT
@@ -558,6 +573,61 @@ def build_snapshot(rows: Iterable[Mapping[str, Any]], as_of: dt.date | None = No
     }
 
 
+def build_invoice_drilldown(
+    rows: Iterable[Mapping[str, Any]], line_rows: Iterable[Mapping[str, Any]],
+    as_of: dt.date | None = None,
+) -> dict[str, Any]:
+    """Explain unchanged posted header totals; never force lines to balance.
+
+    Columnar documents/lines are stored once, not repeated across report periods.
+    Returns are separate identified documents, necessary to bridge net sales.
+    """
+    as_of = as_of or dt.date.today()
+    documents = {}
+    for source in rows:
+        doc = normalize_transaction(source)
+        if not doc['sop'] or not dt.date(min(YEARS), 1, 1) <= doc['date'] <= as_of:
+            continue
+        key = f"{doc['kind']}:{doc['sop']}"
+        doc.update(key=key, date=doc['date'].isoformat(),
+                   raw_cost=round(float(source.get('extended_cost') or source.get('cost') or 0), 2),
+                   margin_pct=round(100 * doc['profit'] / doc['sales'], 2) if doc['sales'] else None)
+        documents[key] = doc
+    grouped = defaultdict(list)
+    for source in line_rows:
+        key = f"{source.get('kind', 'Invoice')}:{str(source.get('sop') or '').strip()}"
+        if key not in documents:
+            continue
+        sign = -1 if documents[key]['kind'] == 'Return' else 1
+        raw_sales = round(float(source.get('sales') or 0), 2)
+        raw_cost = round(float(source.get('raw_cost') or 0), 2)
+        # Preserve signed invoice line prices (discounts/adjustments included).
+        sales = -abs(raw_sales) if sign == -1 else raw_sales
+        cost = sign * abs(raw_cost)
+        profit = round(sales - cost, 2)
+        grouped[key].append(dict(
+            line_sequence=int(source.get('line_sequence') or 0),
+            component_sequence=int(source.get('component_sequence') or 0),
+            item=str(source.get('item') or '').strip(), description=str(source.get('description') or '').strip(),
+            quantity=float(source.get('quantity') or 0), uom=str(source.get('uom') or '').strip(),
+            sales=sales, raw_cost=raw_cost, cost=cost, profit=profit,
+            margin_pct=round(100 * profit / sales, 2) if sales else None,
+        ))
+    for key, doc in documents.items():
+        lines = grouped.get(key, [])
+        lines.sort(key=lambda line: (line['line_sequence'], line['component_sequence']))
+        doc['line_count'] = len(lines)
+        for metric in ('sales', 'cost', 'profit'):
+            doc[metric + '_difference'] = round(doc[metric] - sum(line[metric] for line in lines), 2)
+    document_fields = list(next(iter(documents.values()), {}))
+    line_fields = list(next((lines[0] for lines in grouped.values() if lines), {}))
+    return dict(document_fields=document_fields,
+                documents=[[doc[field] for field in document_fields] for doc in documents.values()],
+                line_fields=line_fields,
+                lines={key: [[line[field] for field in line_fields] for line in lines] for key, lines in grouped.items()},
+                date_basis='document_date', start=f'{min(YEARS)}-01-01', end=as_of.isoformat())
+
+
 def build_open_orders(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     unique: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -894,7 +964,12 @@ def extract() -> dict[str, Any]:
         weekly_line_cols = ["sop", "status", "line_sequence", "component_sequence", "item", "description",
                             "quantity", "uom", "item_type", "item_class", "category_1", "sales", "raw_cost"]
         weekly_line_rows = [dict(zip(weekly_line_cols, row)) for row in weekly_line_cursor.fetchall()]
+        invoice_cursor = cursor.execute(INVOICE_LINE_SQL)
+        invoice_cols = ['kind', 'sop', 'line_sequence', 'component_sequence', 'item', 'description',
+                        'quantity', 'uom', 'sales', 'raw_cost']
+        invoice_lines = [dict(zip(invoice_cols, row)) for row in invoice_cursor.fetchall()]
     snapshot = build_snapshot(transaction_rows)
+    snapshot["invoice_drilldown"] = build_invoice_drilldown(transaction_rows, invoice_lines, dt.date.fromisoformat(snapshot['as_of']))
     snapshot["open_orders"] = build_open_orders(order_rows)
     snapshot["today_activity"] = build_today_activity(activity_rows)
     snapshot["margin_exceptions"] = build_margin_exceptions(

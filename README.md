@@ -38,6 +38,32 @@ Live, authenticated sales reporting sourced from read-only Dynamics GP SQL. It p
 - The dashboard defaults to the latest posting day and supports selectable day or Sunday–Saturday week views
 - Margin Exceptions is dashboard-only and refreshes through the existing live snapshot pipeline
 
+## V1.17 — posted salesperson document drilldown
+
+Click a salesperson, then a document number. The selected report period/date range is retained.
+The default list is **posted normal invoices only** (no open/unposted orders), lowest profit first.
+Switch to Posted returns for the separate signed credits that reconcile report net totals.
+Search matches document/customer/branch; pagination retains every matching document (50 per page).
+
+- The existing `SalesTransactions` header contract is unchanged: document date, historical
+  document salesperson, per-type/SOP de-duplication, normal posted Invoice/Return only.
+- One columnar `invoice_drilldown` object covers selectable dates from 2024 through as-of.
+  It reuses the Weekly drilldown's lossless columnar/lazy-render pattern, not its stock-only math.
+- `SOP30300` lines join exact scoped headers by SOPTYPE + SOPNUMBE. Every line/component
+  is included, including nonstock/comment/surcharge lines; no margin-screen exclusions.
+- Header totals retain the existing signed absolute cost policy. Line prices retain signed
+  invoice prices; return prices are negative magnitudes. Costs are absolute for invoices,
+  negative absolute for returns; signed source EXTDCOST is also displayed. Zero costs stay zero.
+- Sales, cost, profit, margin, quantity/UOM, item/description and line/component ID are visible.
+  Negative profit stays visible. Undefined zero-sales margins display a dash.
+- Header less line sales/cost/profit residuals are explicit, including missing line groups;
+  no balancing plug, cost repair, or manual margin override is introduced. Sequential GP reads
+  can race, and header-cost vs line-cost differences are not accounting repairs.
+- Net invoice/return-to-report bridge is checked before search/type filtering. Older snapshots
+  show an explicit unavailable-detail notice. Weekly Report and Open Orders are unchanged.
+- Prior-year comparison totals remain aggregates; this drilldown follows the selected current
+  period, not the prior-period cohort. Profit is not fully costed or GL net income.
+
 ## Refresh
 
 ```bash
@@ -71,7 +97,7 @@ Open `http://127.0.0.1:8765/`.
 
 ## Production
 
-GitHub Pages serves the static shell. The browser requires the same Supabase login as the AR CRM and reads only `smi_sales_current_snapshot()`. Raw invoice rows are never published.
+GitHub Pages serves the static shell. The browser requires the same Supabase login as the AR CRM and reads only `smi_sales_current_snapshot()`. Invoice/return and line detail is available only inside the authenticated snapshot; raw business data is never committed to the public Pages repository.
 
 ## Tests
 
