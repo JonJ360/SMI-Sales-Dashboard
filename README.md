@@ -64,6 +64,16 @@ Search matches document/customer/branch; pagination retains every matching docum
 - Prior-year comparison totals remain aggregates; this drilldown follows the selected current
   period, not the prior-period cohort. Profit is not fully costed or GL net income.
 
+## V1.18 — branch operations drilldown
+
+- Branch = the posted document's GP `Location Code`, not customer geography or a salesperson's current office. No GP query, snapshot schema, auth, refresh or cost-policy changes.
+- Overview retains every current or prior-period branch, including return-only and prior-only branches. Net sales, like-for-like prior sales/change, profit/margin, returns and invoice counts lead to a branch-specific detail panel.
+- Branch detail carries the independent Branch period into reconciled header totals, monthly sales/profit (negative values retained), customer and salesperson rankings, returns, average invoice and active-customer metrics. Open-order exposure is explicitly current-only, not selected-period sales.
+- Click a customer or salesperson to filter documents **within that branch**. All posted invoices/returns remain available with search, type/signal filters and 50-row pagination; expand a document for existing source item detail, quantities/UOM, original and report cost, profit/margin and header/line differences. Customer/salesperson rankings show the top 15; invoice search covers all documents.
+- Header loss / zero-cost flags are separate from the existing Margin Exceptions screen. Screened exceptions retain their trailing-30-day **posting-date** basis and exclusions; their values are not substituted for report document-date totals. Only the intersection with selected branch documents is shown, with a coverage note. This is not historical exception coverage.
+- Detail requires the V1.17 `invoice_drilldown` payload. Older snapshots show unavailable, not fabricated zero activity. Profit remains sales less available GP cost, not fully costed profit or GL net income.
+- `python -m pytest tests -q` runs the Node model tests as well as existing regressions. `python tests/verify_branch_browser.py --output <private-directory>` explicitly exercises the real localhost snapshot in installed Edge; screenshots/business data stay outside this public repository. Hosted split-verification is explicitly labelled in its evidence output.
+
 ## Refresh
 
 ```bash
