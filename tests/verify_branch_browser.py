@@ -22,7 +22,7 @@ def run(url, output, payload=None):
             # Do not impersonate a login or alter auth. Render verified data in this isolated test page.
             page.evaluate("data=>{state.data=data;populateViewFilters();populateWeeks();render();lock.classList.remove('show')}",json.loads(payload.read_text(encoding='utf-8')))
         page.wait_for_function('!!state.data && !!document.querySelector("[data-branch]")')
-        assert page.locator('.version').inner_text() == 'VERSION 1.18'
+        assert page.locator('.version').inner_text() == 'VERSION 1.19'
         page.locator('[data-view=branches]').click()
         names=page.locator('[data-branch]').evaluate_all('(els)=>els.map(e=>e.dataset.branch)')
         for name in names:
@@ -31,8 +31,19 @@ def run(url, output, payload=None):
             assert 'totals match' in page.locator('#branchDetailBridge').inner_text()
         result['checks'].append(f'{len(names)} branch opens and reconciliations')
         page.locator('[data-branch=FARGO]').click()
+        assert page.locator('#branchMonthlyChart').is_visible()
+        assert page.locator('#branchItemsChart').is_visible()
+        charts=page.evaluate("""()=>({monthly:state.charts.branchMonthlyChart.data,trend:state.charts.branchTrendChart.config.type,items:state.charts.branchItemsChart.data})""")
+        assert len(charts['monthly']['labels'])==12
+        assert charts['trend']=='line'
+        assert len(charts['items']['labels'])==10
+        assert page.locator('#branchTopItems tbody tr').count()==10
+        assert 'Header less all lines' in page.locator('#branchItemsNote').inner_text()
+        result['checks'].append('monthly year comparison, profit/margin line chart, top 10 source-line gross items')
         page.wait_for_timeout(350)
         page.screenshot(path=str(output/'branch-desktop.png'))
+        for chart_id in ['branchMonthlyChart','branchTrendChart','branchItemsChart']:
+            page.locator('#'+chart_id).locator('xpath=ancestor::div[contains(@class,"panel")][2]').screenshot(path=str(output/(chart_id+'-desktop.png')),style='.top { visibility:hidden; }')
         first=page.locator('[data-branch-document]').first.inner_text()
         page.locator('#branchDocNext').click()
         assert 'page 2' in page.locator('#branchDocPage').inner_text()
@@ -88,6 +99,11 @@ def run(url, output, payload=None):
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'item expansion mobile overflow'
         page.screenshot(path=str(output/'branch-mobile-items.png'))
         result['checks'].append('390px mobile layout and item expansion without page overflow')
+        # An older detail payload without start retains the existing historical fallback.
+        page.evaluate('()=>{delete state.data.invoice_drilldown.start;renderBranchOverview()}')
+        assert page.locator('#branchMonthlyChart').is_visible()
+        assert page.locator('[data-branch-document]').count()>0
+        result['checks'].append('legacy missing start-date fallback')
         # Legacy snapshot simulation never reports unavailable detail as zero activity.
         page.evaluate('()=>{state.data={...state.data,invoice_drilldown:undefined};renderBranchOverview()}')
         assert 'unavailable' in page.locator('#branchDetailBridge').inner_text()

@@ -74,6 +74,13 @@ Search matches document/customer/branch; pagination retains every matching docum
 - Detail requires the V1.17 `invoice_drilldown` payload. Older snapshots show unavailable, not fabricated zero activity. Profit remains sales less available GP cost, not fully costed profit or GL net income.
 - `python -m pytest tests -q` runs the Node model tests as well as existing regressions. `python tests/verify_branch_browser.py --output <private-directory>` explicitly exercises the real localhost snapshot in installed Edge; screenshots/business data stay outside this public repository. Hosted split-verification is explicitly labelled in its evidence output.
 
+## V1.19 — branch charts
+
+- Monthly Jan–Dec net-sales bars reuse the salesperson chart style, with one series per available year. This branch-only historical comparison is independent of the Branch period filter; current month is partial and future months are blank.
+- Monthly profit/margin lines follow the selected Branch period. Dollars and percent have labeled separate axes. Negative profit is retained; margin is undefined for zero/negative net sales.
+- Top 10 items use gross **invoice source-line sales before returns**, ranked by item ID within the selected branch and period. All source line types/components remain included, blank IDs are grouped, and quantities in different UOMs are not added together. Item descriptions and exact dollar totals are shown below the horizontal bars.
+- Header less all invoice-line sales and invoices without lines are disclosed; residuals are not allocated. No source extraction, cost policy, auth, schema or schedule changes.
+
 ## Refresh
 
 ```bash

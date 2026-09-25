@@ -86,5 +86,5 @@ def test_zero_and_negative_sales_margins_and_signed_quantities():
 
 def test_frontend_exposes_accessible_lazy_detail_with_legacy_fallback():
     html = (Path(__file__).resolve().parents[1] / 'index.html').read_text(encoding='utf-8')
-    for token in ('VERSION 1.18', 'data-weekly-order', 'aria-expanded', 'toggleWeeklyOrder', 'renderWeeklyOrderLines', 'Line detail unavailable', 'Stock contribution', 'Source cost', 'No lines are removed', 'esc(line.description)', "esc(line.item||'No item ID')", 'weeklyOrders.onclick'):
+    for token in ('VERSION 1.19', 'data-weekly-order', 'aria-expanded', 'toggleWeeklyOrder', 'renderWeeklyOrderLines', 'Line detail unavailable', 'Stock contribution', 'Source cost', 'No lines are removed', 'esc(line.description)', "esc(line.item||'No item ID')", 'weeklyOrders.onclick'):
         assert token in html
