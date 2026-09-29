@@ -2,6 +2,33 @@
 
 Live, authenticated sales reporting sourced from read-only Dynamics GP SQL. It preserves Anthony Berger's current report measures and reporting sections while using the AR CRM navigation model and Asset Tracker blue visual system.
 
+## V1.21 — customer ranking and Excel export
+
+Customers defaults to the actual current-year YTD Top 25. **Rank by** switches between
+This Year / Current YTD and Last Year / Prior YTD; other period selections explicitly
+say Current period / Prior period. Current ranking uses `rankings.customers`, not a
+re-sort of the prior-year watchlist. Search remains a case-insensitive substring
+within the selected cohort; original cohort rank and customer-name grouping are retained.
+Existing YTD, rolling 30-day, full-history, month and drilldown scopes are unchanged.
+
+Current/prior inclusive date endpoints are shown explicitly. Specific-month comparisons
+retain the existing **whole prior calendar month**, including when the current month
+is partial. Percent change is `(current - prior) / abs(prior)`, N/A when prior is zero.
+Negative net sales can reflect returns; signs are retained.
+
+**Export Excel** freezes the rendered view into a real `.xlsx` with Customer Comparison
+and Report Info sheets. Amounts retain source cents as numeric cells, percent cells are
+numeric ratios, and dates have Excel date formats. Report Info records period, cohort,
+search, row count, date ranges, data as-of, source hash, separate refresh/publication
+heartbeat, app version and export time. Customer names/search remain literal string
+cells (never formulas). No fabricated customer IDs. Export is local to the browser.
+Vendored SheetJS CE 0.20.3 is byte-identical to the established Financial Statements copy.
+
+No Ben comparison workbook, open-order logic, GP extraction, cloud schema/storage/auth,
+or scheduler changes are part of V1.21. Validation: `node --test tests/*.test.cjs`,
+`python -m pytest tests -q`, and `tests/verify_customer_browser.py` with a frozen local
+payload (see script arguments). Local preview tests do not establish live authentication.
+
 ## Report contract
 
 - Posted, normal invoices and returns
