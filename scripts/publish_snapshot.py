@@ -55,11 +55,19 @@ def rpc(base: str, publishable: str, token: str, name: str, payload: dict[str, A
     raise RuntimeError(f"{name} failed without a response")
 
 
-def publish(snapshot_path: Path, credential_path: Path, *, single_attempt: bool = False) -> dict[str, Any]:
+def publish(snapshot_path: Path, credential_path: Path, *, single_attempt: bool = False, storage: str = 'legacy-v1') -> dict[str, Any]:
     snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
     if snapshot.get("sha256") != source_sha256(snapshot):
         raise RuntimeError("snapshot integrity verification failed")
     credentials = load_credentials(credential_path)
+    if storage in {'content-v1', 'legacy'}:
+        try:
+            from .publish_content import publish_content
+        except ImportError:
+            from publish_content import publish_content
+        return publish_content(snapshot, credentials, legacy=storage == 'legacy')
+    if storage != 'legacy-v1':
+        raise ValueError('unknown SMI storage format')
     base, key = credentials["supabase_url"], credentials["publishable_key"]
     call_rpc = partial(rpc, single_attempt=single_attempt)
     metadata = call_rpc(base, key, credentials["operator_verification_key"], "smi_sales_snapshot_metadata", {})
@@ -90,8 +98,9 @@ def main() -> int:
     parser.add_argument("--snapshot", type=Path, default=Path("data/sales.json"))
     parser.add_argument("--credentials", type=Path, required=True)
     parser.add_argument("--single-attempt", action="store_true", help="Disable automatic RPC retries for a controlled publication; do not blindly rerun after failure.")
+    parser.add_argument('--storage', choices=('content-v1', 'legacy'), default='content-v1', help='Content-addressed default; legacy is an explicit CAS-protected full-payload rollback.')
     args = parser.parse_args()
-    print(json.dumps(publish(args.snapshot, args.credentials, single_attempt=args.single_attempt), indent=2))
+    print(json.dumps(publish(args.snapshot, args.credentials, single_attempt=args.single_attempt, storage=args.storage), indent=2))
     return 0
 
 

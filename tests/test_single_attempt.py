@@ -37,7 +37,7 @@ def test_normal_entrypoint_single_attempt_stops_after_failed_stage(tmp_path, fai
     data = tmp_path / "sales.json"
     data.write_text(json.dumps(snapshot))
     creds = tmp_path / "credentials.json"
-    creds.write_text(json.dumps({"supabase_url": "https://example.test", "publishable_key": "key", "current_ar_ingestion_key": "ingest", "current_ar_promotion_key": "promote", "operator_verification_key": "verify"}))
+    creds.write_text(json.dumps({"supabase_url": "https://inhwadbibwkakacdvoxu.supabase.co", "publishable_key": "key", "current_ar_ingestion_key": "ingest", "current_ar_promotion_key": "promote", "operator_verification_key": "verify"}))
     commands = []
 
     def offline_child(args):
@@ -49,13 +49,14 @@ def test_normal_entrypoint_single_attempt_stops_after_failed_stage(tmp_path, fai
         pytest.fail("failed stage must abort publication")
 
     log = tmp_path / "refresh.json"
-    with mock.patch.multiple(wrapper, DATA=data, CREDS=creds, LOG=log), mock.patch.object(wrapper, "run", side_effect=offline_child), mock.patch.object(sys, "argv", [str(wrapper_path), "--single-attempt"]), mock.patch.object(publisher.urllib.request, "urlopen", side_effect=[_Response([]), failure]) as send, mock.patch.object(publisher.time, "sleep") as sleep:
+    responses = [_Response({'snapshot_id':1,'generation':0,'storage_format':'legacy'}), _Response([{'snapshot_id':1}]), _Response([]), failure]
+    with mock.patch.multiple(wrapper, DATA=data, CREDS=creds, LOG=log), mock.patch.object(wrapper, "run", side_effect=offline_child), mock.patch.object(sys, "argv", [str(wrapper_path), "--single-attempt"]), mock.patch.object(publisher.urllib.request, "urlopen", side_effect=responses) as send, mock.patch.object(publisher.time, "sleep") as sleep:
         with pytest.raises((TimeoutError, RuntimeError)):
             wrapper.main()
     assert len(commands) == 2
     assert commands[1][-1] == "--single-attempt"
-    assert [call.args[0].full_url.rsplit("/", 1)[-1] for call in send.call_args_list] == ["smi_sales_snapshot_metadata", "smi_sales_stage_snapshot"]
-    assert [call.args[0].get_header("Authorization") for call in send.call_args_list] == ["Bearer verify", "Bearer ingest"]
+    assert [call.args[0].full_url.rsplit("/", 1)[-1] for call in send.call_args_list] == ["smi_sales_storage_state", "smi_sales_snapshot_metadata", "smi_sales_missing_chunks", "smi_sales_stage_manifest"]
+    assert [call.args[0].get_header("Authorization") for call in send.call_args_list] == ["Bearer verify", "Bearer verify", "Bearer ingest", "Bearer ingest"]
     assert json.loads(log.read_text())["ok"] is False
     sleep.assert_not_called()
 
