@@ -81,6 +81,10 @@ Search matches document/customer/branch; pagination retains every matching docum
 - Top 10 items use gross **invoice source-line sales before returns**, ranked by item ID within the selected branch and period. All source line types/components remain included, blank IDs are grouped, and quantities in different UOMs are not added together. Item descriptions and exact dollar totals are shown below the horizontal bars.
 - Header less all invoice-line sales and invoices without lines are disclosed; residuals are not allocated. No source extraction, cost policy, auth, schema or schedule changes.
 
+## V1.20 — customer and salesperson item categories
+
+Both drawers show the top five current GP item categories by selected-period gross invoice-line sales before returns. The current item-master dimension preserves the existing REBAR / STEEL category-50 rule; missing or ambiguous mappings stay Unclassified. Header totals and costing are unchanged. See [the category source contract and verification](docs/item-categories.md).
+
 ## Refresh
 
 ```bash

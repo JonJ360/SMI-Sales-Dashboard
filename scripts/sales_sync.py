@@ -68,6 +68,32 @@ WHERE t.rn = 1 AND t.document_date >= '2024-01-01'
 ORDER BY t.kind, t.sop, l.LNITMSEQ, l.CMPNTSEQ
 """
 
+# Current master classification, separate from posted sales attribution/amounts.
+# Never join this mutable dimension into document/line accounting populations.
+ITEM_CATEGORY_SQL = """
+SELECT LTRIM(RTRIM(ITEMNMBR)) AS item,
+       LTRIM(RTRIM(COALESCE(ITMCLSCD, ''))) AS item_class,
+       LTRIM(RTRIM(COALESCE(USCATVLS_1, ''))) AS category_1
+FROM dbo.IV00101
+"""
+
+
+def build_item_categories(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    items, ambiguous = {}, set()
+    for row in rows:
+        item = str(row.get('item') or '').strip()
+        if not item:
+            continue
+        value = [str(row.get(key) or '').strip() for key in ('item_class', 'category_1')]
+        if item in items and items[item] != value:
+            ambiguous.add(item)
+        items[item] = value
+    return dict(source='SMI.dbo.IV00101', basis='current item master, not historical classification',
+                fields=['item_class', 'category_1'],
+                items={key: value for key, value in items.items() if key not in ambiguous},
+                ambiguous_items=sorted(ambiguous))
+
+
 OPEN_ORDER_SQL = """
 WITH orders AS (
   SELECT
@@ -968,7 +994,10 @@ def extract() -> dict[str, Any]:
         invoice_cols = ['kind', 'sop', 'line_sequence', 'component_sequence', 'item', 'description',
                         'quantity', 'uom', 'sales', 'raw_cost']
         invoice_lines = [dict(zip(invoice_cols, row)) for row in invoice_cursor.fetchall()]
+        category_rows = [dict(zip(['item', 'item_class', 'category_1'], row))
+                         for row in cursor.execute(ITEM_CATEGORY_SQL).fetchall()]
     snapshot = build_snapshot(transaction_rows)
+    snapshot["item_categories"] = build_item_categories(category_rows)
     snapshot["invoice_drilldown"] = build_invoice_drilldown(transaction_rows, invoice_lines, dt.date.fromisoformat(snapshot['as_of']))
     snapshot["open_orders"] = build_open_orders(order_rows)
     snapshot["today_activity"] = build_today_activity(activity_rows)
