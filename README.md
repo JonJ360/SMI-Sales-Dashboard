@@ -2,6 +2,24 @@
 
 Live, authenticated sales reporting sourced from read-only Dynamics GP SQL. It preserves Anthony Berger's current report measures and reporting sections while using the AR CRM navigation model and Asset Tracker blue visual system.
 
+## V1.22 — Export this view to PDF
+
+**Export this view** opens a print-ready capture of the active report and any open
+customer/salesperson detail. Choose **Print / Save as PDF**, then Save as PDF in the
+browser dialog (landscape recommended). The dashboard and Excel export are unchanged.
+
+The capture includes rendered off-scroll rows, current search/filter/page and expanded
+item lines, not hidden tabs, other pages or collapsed detail. Charts retain their
+displayed date scope. Metadata records source as-of, snapshot SHA, separate publication
+heartbeat, capture time, application version and selected report date endpoints.
+No accounting recalculation, data fetch/publication, GP/backend/auth/schema or scheduler
+change is introduced. Stale drawers, loading and blocked popups receive explicit guards.
+
+Validation: `python tests/verify_pdf_browser.py --payload <private-frozen-sales.json>
+--output <private-evidence-directory>` exercises 13 PDF scenarios, chart capture,
+expanded long invoices, text bounds, literal hostile text and non-mutating capture.
+Chromium print rendering is tested; native print dialogs and other browser engines are not.
+
 ## V1.21 — customer ranking and Excel export
 
 Customers defaults to the actual current-year YTD Top 25. **Rank by** switches between
