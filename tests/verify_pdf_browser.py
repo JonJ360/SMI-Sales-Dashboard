@@ -80,6 +80,10 @@ def run(payload, output):
                 report.close()
 
             sample('overview',required=['Net Sales'])
+            page.locator('[data-view=categories]').click()
+            page.locator('#categoryChoice').select_option('TOOLS')
+            sample('annual-categories',required=['Product Categories','TOOLS sales','Current GP item class','not net sales','Partial'])
+            page.locator('[data-view=overview]').click()
             page.locator('#overviewPeriod').select_option('MONTH')
             page.locator('#overviewMonth').select_option('2024-01')
             sample('overview-month',required=['January 2024','2024-01-01','2024-01-31'])

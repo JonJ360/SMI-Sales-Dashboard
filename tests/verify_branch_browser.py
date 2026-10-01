@@ -22,7 +22,7 @@ def run(url, output, payload=None):
             # Do not impersonate a login or alter auth. Render verified data in this isolated test page.
             page.evaluate("data=>{state.data=data;populateViewFilters();populateWeeks();render();lock.classList.remove('show')}",json.loads(payload.read_text(encoding='utf-8')))
         page.wait_for_function('!!state.data && !!document.querySelector("[data-branch]")')
-        assert page.locator('.version').inner_text() == 'VERSION 1.22'
+        assert page.locator('.version').inner_text() == 'VERSION 1.23'
         page.locator('[data-view=branches]').click()
         names=page.locator('[data-branch]').evaluate_all('(els)=>els.map(e=>e.dataset.branch)')
         for name in names:

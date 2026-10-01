@@ -34,7 +34,35 @@ const ItemCategoryModel = (() => {
       difference:(header-total)/100,missing_documents:missing,unclassified_sales:unclassified/100,
       other_sales:(total-topTotal)/100};
   }
-  return {category,summarize};
+  function annual(data,year) {
+    const detail=data.invoice_drilldown,master=data.item_categories,docs=branch.decode(detail);
+    if(!docs||!detail?.lines||master?.source!=='SMI.dbo.IV00101'||!master.items)return null;
+    const start=detail.start||'2024-01-01',end=data.as_of;
+    const months=Array.from({length:12},(_,i)=>{
+      const key=`${year}-${String(i+1).padStart(2,'0')}`;
+      return {key,status:key>end.slice(0,7)?'Future':key<start.slice(0,7)?'Unavailable':key===end.slice(0,7)||(key===start.slice(0,7)&&start.slice(8,10)!=='01')?'Partial':'Actual'};
+    });
+    const groups=new Map();let header=0,total=0,missing=0,returns=0,returnCount=0;
+    for(const doc of docs) {
+      if(doc.date<start||doc.date>end||Number(doc.date.slice(0,4))!==Number(year))continue;
+      if(doc.kind==='Return'){returns+=cents(doc.sales);returnCount++;continue;}
+      if(doc.kind!=='Invoice')continue;
+      header+=cents(doc.sales);
+      const lines=detail.lines[doc.key];if(!lines?.length){missing++;continue;}
+      for(const raw of lines) {
+        const line=Array.isArray(raw)?Object.fromEntries(detail.line_fields.map((k,i)=>[k,raw[i]])):raw;
+        const item=String(line.item||''),label=category(Object.hasOwn(master.items,item)?master.items[item]:null);
+        if(!groups.has(label))groups.set(label,Array(12).fill(0));
+        const value=cents(line.sales);groups.get(label)[Number(doc.date.slice(5,7))-1]+=value;total+=value;
+      }
+    }
+    const categories=[...groups].map(([name,values])=>({name,sales:values.reduce((a,b)=>a+b,0)/100,
+      months:values.map((v,i)=>['Future','Unavailable'].includes(months[i].status)?null:v/100)}))
+      .sort((a,b)=>b.sales-a.sales||a.name.localeCompare(b.name));
+    return {year:Number(year),months,categories,line_sales:total/100,header_sales:header/100,difference:(header-total)/100,
+      missing_documents:missing,return_sales:returns/100,return_documents:returnCount,returns_included:!!data.returns_included};
+  }
+  return {category,summarize,annual};
 })();
 if(typeof module!=='undefined'&&module.exports)module.exports=ItemCategoryModel;
 if(typeof window!=='undefined') {
