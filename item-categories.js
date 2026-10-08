@@ -67,6 +67,7 @@ const ItemCategoryModel = (() => {
 if(typeof module!=='undefined'&&module.exports)module.exports=ItemCategoryModel;
 if(typeof window!=='undefined') {
   window.renderItemCategories=function(entity,name,view) {
+    if(entity==='salesperson'&&typeof renderSalespersonComparison==='function'){renderSalespersonComparison(name,view);return;}
     const id=entity+'Categories',drawer=document.querySelector('#'+entity+'Drawer .drawer');
     let panel=document.getElementById(id);
     if(!panel) {

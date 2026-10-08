@@ -36,7 +36,7 @@ function visible(node){
 // Walk source and clone together; off-screen scroll content is included, hidden tabs/details are not.
 function copyVisible(node,doc){
   if(node.nodeType===3)return doc.createTextNode(node.textContent);
-  if(node.nodeType!==1||!visible(node)||node.matches('script,style,.drawer-close,[data-report-export],#customerExport'))return null;
+  if(node.nodeType!==1||(!visible(node)&&!node.matches('.person-comparison thead'))||node.matches('script,style,.drawer-close,[data-report-export],#customerExport'))return null;
   if(node.tagName==='CANVAS'){
     const chart=root.Chart?.getChart(node);
     if(chart){chart.stop();chart.update('none')}
@@ -55,6 +55,8 @@ function copyVisible(node,doc){
   }
   // Preserve intentional spacing but not fixed widths, clipping, positioning or event handlers.
   if(node.style.marginTop)clone.style.marginTop=node.style.marginTop;
+  if(node.matches('.person-comparison td[data-label]'))clone.setAttribute('data-label',node.getAttribute('data-label'));
+  if(node.classList.contains('pc-bar'))clone.style.width=node.style.width;
   const children=node.tagName==='DETAILS'&&!node.open?[node.querySelector('summary')]:node.childNodes;
   for(const child of children){if(child){const copied=copyVisible(child,doc);if(copied)clone.append(copied)}}
   return clone;
@@ -81,7 +83,7 @@ function createDocument(target,context){
     'Refresh / publication heartbeat (not source-data timestamp): '+context.heartbeat,
     'Application: '+context.version
   ])appendText(doc,header,'div',line,'report-meta');
-  appendText(doc,header,'div','Scope: active report and any open detail below; includes the currently rendered rows, search, page and expanded items only. Hidden tabs, other pages and collapsed item detail are not added. Charts retain their displayed date scope; history/YTD charts may differ from the selected period. Values retain dashboard rounding and existing source-cost policy, not GL net income.','report-scope');
+  appendText(doc,header,'div',context.scope||'Scope: active report and any open detail below; includes the currently rendered rows, search, page and expanded items only. Hidden tabs, other pages and collapsed item detail are not added. Charts retain their displayed date scope; history/YTD charts may differ from the selected period. Values retain dashboard rounding and existing source-cost policy, not GL net income.','report-scope');
   for(const source of context.sources){const copied=copyVisible(source,doc);if(copied)doc.body.append(copied)}
   for(const source of context.drawers){
     const section=appendText(doc,doc.body,'section','','report-detail');
@@ -93,6 +95,7 @@ function createDocument(target,context){
   return doc;
 }
 function exportView(){
+  if(document.querySelector('#salespersonDrawer.show'))return exportSalesperson();
   if(!state.data||document.getElementById('refreshBtn').disabled||document.querySelector('#lock.show')){
     root.alert('Wait for the report to finish loading before exporting.');return;
   }
@@ -111,13 +114,33 @@ function exportView(){
   if(!target){root.alert('Allow pop-ups for this dashboard to open the PDF preview.');return}
   try{createDocument(target,context)}catch(error){target.close();root.alert('The report could not be prepared. Please try again.');}
 }
+function exportSalesperson(){
+  const captured=root.salespersonReportCapture;
+  if(!state.data||document.getElementById('refreshBtn').disabled||document.querySelector('#lock.show')){
+    root.alert('Wait for the report to finish loading before exporting.');return;
+  }
+  if(!captured||captured.sha!==String(state.data.sha256||'')||!document.querySelector('#salespersonDrawer.show')){
+    root.alert('The source snapshot changed. Close and reopen the detail before exporting.');return;
+  }
+  // Deliberate allowlist: never capture the active company view or the entire drawer.
+  const context={title:captured.model.name+' — Individual Sales Report',period:'Selected period compared with the same elapsed period one year earlier',
+    asOf:captured.asOf,sha:captured.sha||'Unavailable',heartbeat:captured.heartbeat||'Unavailable',capturedAt:new Date().toISOString(),
+    version:document.querySelector('.version').textContent,dates:captured.model.dates,
+    scope:'Scope: '+captured.model.name+' only. Complete selected-period category comparison, not a company dashboard. Net sales include returns; categories are gross invoice-line sales before returns.',
+    sources:[document.getElementById('salespersonComparison')],drawers:[]};
+  const target=root.open('about:blank','_blank');
+  if(!target){root.alert('Allow pop-ups for this dashboard to open the PDF preview.');return;}
+  try{createDocument(target,context)}catch(error){target.close();root.alert('The report could not be prepared. Please try again.');}
+}
 function install(){
   const main=document.createElement('button');main.id='exportView';main.className='refresh';main.textContent='Export this view';main.dataset.reportExport='';main.title='Open a printable preview, then save as PDF';main.onclick=exportView;
   document.querySelector('.controls').prepend(main);
   for(const head of document.querySelectorAll('.drawer-head')){
-    const button=main.cloneNode(true);button.removeAttribute('id');button.onclick=exportView;head.insertBefore(button,head.lastElementChild);
+    const button=main.cloneNode(true);button.removeAttribute('id');button.onclick=exportView;
+    if(head.closest('#salespersonDrawer')){button.textContent='Export salesperson report';button.onclick=exportSalesperson;}
+    head.insertBefore(button,head.lastElementChild);
   }
 }
-root.ReportExport={copyVisible,createDocument,exportView};
+root.ReportExport={copyVisible,createDocument,exportView,exportSalesperson};
 install();
 })(window);

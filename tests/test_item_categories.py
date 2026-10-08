@@ -33,6 +33,6 @@ def test_category_frontend_model_and_both_drawer_hooks():
     result = subprocess.run(['node', '--test', 'tests/category-model.test.cjs'], cwd=ROOT, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     html = (ROOT / 'index.html').read_text(encoding='utf-8')
-    assert 'src="item-categories.js?v=1.23"' in html
+    assert 'src="item-categories.js?v=1.24"' in html
     assert "renderItemCategories('customer',name,view)" in html
     assert "renderItemCategories('salesperson',name,view)" in html

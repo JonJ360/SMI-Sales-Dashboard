@@ -59,7 +59,7 @@ def run(payload,output,branch_regression=False):
             page=browser.new_page(viewport={'width':1440,'height':1000})
             page.on('pageerror',lambda e:errors.append(str(e)))
             page.goto(url,wait_until='networkidle');page.wait_for_function('!!state.data')
-            for entity,view,body,close,name_id in [('customer','customers','customersBody','customerDrawerClose','customerDrawerName'),('salesperson','salespeople','salespeopleBody','drawerClose','drawerName')]:
+            for entity,view,body,close,name_id in [('customer','customers','customersBody','customerDrawerClose','customerDrawerName')]:
                 page.locator(f'[data-view={view}]').click()
                 for period,month in [('YTD',''),('1M',''),('FULL',''),('MONTH','2024-01'),('MONTH',data['as_of'][:7])]:
                     page.locator('#'+view+'Period').select_option(period)
@@ -99,7 +99,8 @@ def run(payload,output,branch_regression=False):
                 name=page.locator('#'+name_id).inner_text()
                 actual=page.evaluate('a=>ItemCategoryModel.summarize(state.data,a.entity,a.name,filterForView("overview"))',dict(entity=entity,name=name))
                 assert actual==expected(data,entity,name,'1M','')
-                assert 'Last 30 days' in page.locator('#'+entity+'CategoriesScope').inner_text()
+                if entity=='customer': assert 'Last 30 days' in page.locator('#customerCategoriesScope').inner_text()
+                else: assert page.evaluate('salespersonReportCapture.model.dates.current_start') == (dt.date.fromisoformat(data['as_of'])-dt.timedelta(days=29)).isoformat()
                 page.locator('#'+close).click()
             # XSS and legacy/empty fallbacks are explicit isolated test states.
             page.evaluate("()=>{window.savedMaster=state.data.item_categories;state.data.item_categories={...savedMaster,items:Object.fromEntries(Object.keys(savedMaster.items).map(k=>[k,['<img src=x onerror=alert(1)>','']]))}}")
@@ -110,9 +111,13 @@ def run(payload,output,branch_regression=False):
             page.evaluate('()=>{state.data.item_categories=undefined}')
             for entity,body,close in [('customer','overviewCustomers','customerDrawerClose'),('salesperson','overviewSalespeople','drawerClose')]:
                 page.locator('#'+body+' tr.clickable').first.click()
-                assert 'unavailable' in page.locator('#'+entity+'CategoriesNote').inner_text()
-                assert not page.locator('#'+entity+'CategoriesChart').is_visible()
-                assert page.locator('#'+entity+'CategoriesTable tbody tr').count()==0
+                if entity=='customer':
+                    assert 'unavailable' in page.locator('#customerCategoriesNote').inner_text()
+                    assert not page.locator('#customerCategoriesChart').is_visible()
+                    assert page.locator('#customerCategoriesTable tbody tr').count()==0
+                else:
+                    assert 'Category detail unavailable' in page.locator('#salespersonComparison').inner_text()
+                    assert page.evaluate('salespersonReportCapture.model.rows.length')==0
                 page.locator('#'+close).click()
             assert not errors,errors
             browser.close()

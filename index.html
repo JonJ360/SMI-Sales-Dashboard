@@ -40,7 +40,7 @@ button,input,select{font:inherit}.app{min-height:100vh;display:grid;grid-templat
 <div class="lock" id="lock"><div class="lock-card"><div class="lock-logo">SMI</div><h2>Sales Intelligence</h2><p>Use the same secure account as the AR CRM.</p><label for="authUser">User</label><select id="authUser"><option value="jonj@360-llc.com">Jon</option><option value="ben@structuralfab.com">Ben</option><option value="kaley@360-llc.com">Kaley</option><option value="kelsey@360-llc.com">Kelsey</option><option value="randyj@smionline.com">Randy</option></select><label for="authPin">PIN</label><input id="authPin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" placeholder="6-digit PIN"><button id="loginBtn">Sign in</button><div class="lock-error" id="lockError"></div></div></div>
 <div class="app">
 <aside class="side">
-  <div class="brand"><div class="brand-mark">SMI</div><div><div class="eyebrow">Structural Materials</div><h1>Sales Intelligence</h1><div class="version">VERSION 1.23</div></div></div>
+  <div class="brand"><div class="brand-mark">SMI</div><div><div class="eyebrow">Structural Materials</div><h1>Sales Intelligence</h1><div class="version">VERSION 1.24</div></div></div>
   <nav class="nav" aria-label="Report sections">
     <button class="active" data-view="overview">Overview</button>
     <button data-view="salespeople">Salespeople</button>
@@ -117,7 +117,8 @@ button,input,select{font:inherit}.app{min-height:100vh;display:grid;grid-templat
 <div class="drawer-shade" id="customerDrawer" aria-hidden="true"><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="customerDrawerName"><div class="drawer-head"><div><div class="eyebrow">Customer Detail</div><h2 id="customerDrawerName">Customer</h2><div class="panel-note" id="customerDrawerPeriod">Selected period · vs. prior year</div></div><button class="drawer-close" id="customerDrawerClose" aria-label="Close">×</button></div><div class="drawer-kpis"><div class="card kpi blue"><div class="k-label">Net Sales</div><div class="k-value" id="customerDrawerSales">$0</div></div><div class="card kpi"><div class="k-label" title="Sales less source GP cost; losses retained. Missing costs remain zero. Not GL net income.">Net Profit</div><div class="k-value" id="customerDrawerProfit">$0</div></div><div class="card kpi"><div class="k-label">Returns</div><div class="k-value" id="customerDrawerReturns">$0</div></div><div class="card kpi"><div class="k-label">Invoices</div><div class="k-value" id="customerDrawerInvoices">0</div></div></div><div class="drawer-grid"><div class="panel"><div class="panel-head"><span class="panel-title">Monthly Net Sales</span><span class="panel-note">2025 / 2026</span></div><div class="panel-body"><div class="drawer-chart"><canvas id="customerChart"></canvas></div><div class="panel-head"><span class="panel-title">Sales by Salesperson</span><span class="panel-note">Selected period</span></div><div class="drawer-pie"><canvas id="customerSalesMix"></canvas></div></div></div><div class="panel"><div class="panel-head"><span class="panel-title">Salespeople</span><span class="panel-note">Selected period</span></div><div class="panel-body table-wrap"><table><thead><tr><th>Salesperson</th><th class="num">Net Sales</th></tr></thead><tbody id="customerDrawerSalespeople"></tbody></table></div></div></div></aside></div>
 <script src="invoice-drilldown.js?v=1.17"></script>
 <script src="branch-drilldown.js?v=1.19"></script>
-<script src="item-categories.js?v=1.23"></script>
+<script src="item-categories.js?v=1.24"></script>
+<script src="salesperson-comparison.js?v=1.24"></script>
 <script src="vendor/xlsx-0.20.3.min.js"></script>
 <script src="customer-report.js?v=1.21"></script>
 <script>
@@ -214,6 +215,6 @@ document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{document.quer
 weeklySelect.onchange=()=>{state.weekly=weeklySelect.value;renderWeekly()};weeklySalespeople.onclick=e=>{const row=e.target.closest('[data-weekly-person]');if(row)openWeeklyPerson(row.dataset.weeklyPerson)};marginRange.onchange=()=>{state.marginRange=marginRange.value;render()};marginDate.onchange=()=>{state.marginDate=marginDate.value;render()};refreshBtn.onclick=load;salespersonSearch.oninput=renderSalespeople;customerSearch.oninput=renderCustomers;marginSearch.oninput=renderMarginExceptions;drawerClose.onclick=closeSalesperson;salespersonDrawer.onclick=e=>{if(e.target===salespersonDrawer)closeSalesperson()};customerDrawerClose.onclick=closeCustomer;customerDrawer.onclick=e=>{if(e.target===customerDrawer)closeCustomer()};document.onkeydown=e=>{if(e.key==='Escape'){closeSalesperson();closeCustomer();weeklyOrderPanel.hidden=true}};loginBtn.onclick=signInWithPassword;authPin.onkeydown=e=>{if(e.key==='Enter')signInWithPassword()};initAuth();
 </script>
 <script src="category-trends.js?v=1.23"></script>
-<script src="report-export.js?v=1.22"></script>
+<script src="report-export.js?v=1.24"></script>
 </body>
 </html>

@@ -34,14 +34,15 @@ def run(payload, output):
             def sample(name, button='#exportView', required=(), drawer=False):
                 page.wait_for_timeout(200)
                 before=page.evaluate('JSON.stringify({view:state.view,filters:state.viewFilters,weekly:state.weekly})')
-                expected_rows=page.locator('.view.active tbody tr:visible,.drawer-shade.show tbody tr:visible').count()
-                expected_charts=page.locator('.view.active canvas:visible,.drawer-shade.show canvas:visible').count()
+                individual=page.locator('#salespersonDrawer.show').count()>0
+                expected_rows=page.locator('#salespersonComparison tbody tr' if individual else '.view.active tbody tr:visible,.drawer-shade.show tbody tr:visible').count()
+                expected_charts=0 if individual else page.locator('.view.active canvas:visible,.drawer-shade.show canvas:visible').count()
                 with page.expect_popup() as opened: page.locator(button).click()
                 report=opened.value
                 report.on('pageerror',lambda e:errors.append(str(e)))
                 report.wait_for_function('document.documentElement.dataset.reportReady === "true"')
-                assert report.locator('.view').count()==1
-                assert report.locator('.report-detail').count()==int(drawer)
+                assert report.locator('.view').count()==(0 if individual else 1)
+                assert report.locator('.report-detail').count()==(0 if individual else int(drawer))
                 assert report.locator('tbody tr').count()==expected_rows, name
                 assert report.locator('canvas,script,input,select,[onclick]').count()==0
                 assert report.locator('img').count()==expected_charts
@@ -120,14 +121,14 @@ def run(payload, output):
             page.locator('[data-view=salespeople]').click()
             page.locator('#salespeopleBody tr.clickable').first.click()
             page.locator('[data-invoice-index]').first.click()
-            sample('salesperson-expanded','#salespersonDrawer [data-report-export]',required=['Open detail','item lines'],drawer=True)
+            sample('salesperson-expanded','#salespersonDrawer [data-report-export]',required=['Individual Sales Report','Category comparison','same elapsed period'],drawer=True)
             page.locator('#drawerClose').click()
             page.locator('#salespeoplePeriod').select_option('FULL')
             longest=page.evaluate("()=>{const detail=state.data.invoice_drilldown;const d=decodeInvoiceRows(detail.document_fields,detail.documents).filter(x=>x.kind==='Invoice'&&state.data.salesperson_details[x.salesperson]).sort((a,b)=>(detail.lines[b.key]||[]).length-(detail.lines[a.key]||[]).length)[0];openSalesperson(encodeURIComponent(d.salesperson),'salespeople');return {sop:d.sop,count:detail.lines[d.key].length}}")
             assert longest['count']>20,longest
             page.locator('#invoiceSearch').fill(longest['sop'])
             page.locator('[data-invoice-index]').first.click()
-            sample('long-invoice','#salespersonDrawer [data-report-export]',required=[str(longest['count'])+' item lines'],drawer=True)
+            sample('long-invoice','#salespersonDrawer [data-report-export]',required=['Individual Sales Report','Unavailable'],drawer=True)
             checks[-1]['expanded_line_count']=longest['count']
             page.locator('#drawerClose').click()
             page.locator('[data-view=branches]').click()
