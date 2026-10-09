@@ -1,6 +1,14 @@
-# Individual salesperson comparison (v1.24)
+# Individual salesperson report (v1.25)
 
 Open **Salespeople**, select the period, then select a salesperson. **Export salesperson report** opens a print-ready document; choose **Print / Save as PDF**. While that drawer is open, the main export button also uses the individual-only scope. No salesperson-specific URL/deep link is supported.
+
+## Top customers (v1.25)
+
+The selected salesperson now has one Top 10 Customers table, replacing the older Top 12 customer-only list. It shows exact selected-period net sales per customer and up to three main item categories with gross invoice-line dollars for that salesperson/customer pair. Main means the highest positive signed category totals, not units, company-wide purchases or description guesses. Source customer names remain the grouping identity, matching the existing dashboard; no new customer-ID mapping is invented. Ties use customer/category name. Fewer than ten customers and no activity are explicit.
+
+Only one shared current/prior category comparison remains: no extra top-five category chart or duplicated category lists. Paired bars, every comparison category, exact changes, gross/net/returns bridge, monthly sales and YTD sales/profit charts remain available. The old redundant customer-only table is removed.
+
+Net ranking includes returns; category lines exclude returns. Remaining signed category amounts, missing invoice lines, header/line residuals and outside-top-ten net sales are disclosed. Category detail unavailable is distinct from no positive purchases. The top-customer table is included in both individual export entry points, including mobile exports.
 
 ## Scope and accounting
 
@@ -13,7 +21,7 @@ Open **Salespeople**, select the period, then select a salesperson. **Export sal
 
 ## Export boundary
 
-`ReportExport.exportSalesperson` allowlists **only** `#salespersonComparison` and selected-person metadata. It does not clone the active dashboard, the entire drawer, customer lists, invoice lists, other people, or hidden data. Source SHA, as-of date, refresh heartbeat and capture time are separate. A changed source SHA, loading state, lock or blocked popup prevents export. The captured report does not update with later dashboard changes.
+`ReportExport.exportSalesperson` allowlists **only** `#salespersonComparison` and selected-person metadata. It does not clone the active dashboard, the entire drawer, company-wide customer lists, invoice lists, other people, or hidden data. Source SHA, as-of date, refresh heartbeat and capture time are separate. A changed source SHA, loading state, lock or blocked popup prevents export. The captured report does not update with later dashboard changes.
 
 Mobile tables become labeled cards; print restores repeated table headers and vector bars. PDF uses the existing browser print-preview workflow, not a public report upload. Browser print settings (paper, scale, headers/footers) remain user-controlled. Desktop Edge and responsive phone/tablet layouts are exercised; native iPad/Safari print is a separate compatibility check.
 

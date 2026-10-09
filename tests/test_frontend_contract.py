@@ -149,8 +149,10 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_salesperson_customer_list_uses_mobile_cards_without_horizontal_scroll(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
-        self.assertIn('class="panel-body drawer-customer-wrap"', html)
-        self.assertIn('class="drawer-customer-table"', html)
+        self.assertNotIn('id="drawerCustomers"', html)
+        comparison = (ROOT / "salesperson-comparison.js").read_text(encoding="utf-8")
+        self.assertIn('class="pc-customers"', comparison)
+        self.assertIn('td[data-label]::before', comparison)
         self.assertIn("#salespersonDrawer .drawer-customer-wrap{overflow:visible}", html)
         self.assertIn("#salespersonDrawer .drawer-customer-table{min-width:0}", html)
         self.assertIn("#salespersonDrawer .drawer-customer-table thead{display:none}", html)
@@ -170,15 +172,17 @@ class FrontendContractTests(unittest.TestCase):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
         self.assertIn("function selectedSalespersonDetail", html)
         self.assertIn("const selected=selectedSalespersonDetail(detail,view)", html)
-        self.assertIn("selected.customers.slice(0,12)", html)
+        comparison = (ROOT / "salesperson-comparison.js").read_text(encoding="utf-8")
+        self.assertIn("top=all.slice(0,10)", comparison)
+        self.assertIn("doc.salesperson!==name||doc.date<d.current_start||doc.date>d.current_end", comparison)
         self.assertIn("Selected period", html)
         self.assertNotIn("detail.customers.slice(0,12)", html)
         self.assertNotIn("Top Customers</span><span class=\"panel-note\">All loaded history", html)
 
-    def test_salesperson_pies_appear_before_customer_section(self):
+    def test_salesperson_pies_appear_before_monthly_chart(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
         self.assertIn("#salespersonDrawer .drawer-pies{order:1}", html)
-        self.assertIn("#salespersonDrawer .drawer-grid{order:2}", html)
+        self.assertIn("#salespersonDrawer .drawer-grid{order:2;grid-template-columns:1fr}", html)
 
     def test_prior_year_top_25_customers_show_last_year_this_year_and_dollar_change(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
@@ -191,7 +195,7 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_version_is_visible_beneath_top_left_brand_on_mobile_and_desktop(self):
         html = (ROOT / "index.html").read_text(encoding="utf-8")
-        self.assertIn('<div class="version">VERSION 1.24</div>', html)
+        self.assertIn('class="version">VERSION 1.25', html)
         self.assertNotIn("VERSION 1.3", html)
         self.assertNotIn(".brand .eyebrow,.version,.side-foot{display:none}", html)
 

@@ -126,7 +126,7 @@ function exportSalesperson(){
   const context={title:captured.model.name+' — Individual Sales Report',period:'Selected period compared with the same elapsed period one year earlier',
     asOf:captured.asOf,sha:captured.sha||'Unavailable',heartbeat:captured.heartbeat||'Unavailable',capturedAt:new Date().toISOString(),
     version:document.querySelector('.version').textContent,dates:captured.model.dates,
-    scope:'Scope: '+captured.model.name+' only. Complete selected-period category comparison, not a company dashboard. Net sales include returns; categories are gross invoice-line sales before returns.',
+    scope:'Scope: '+captured.model.name+' only. Complete selected-period comparison and top 10 customers with main purchases, not a company dashboard. Net sales include returns; categories are gross invoice-line sales before returns.',
     sources:[document.getElementById('salespersonComparison')],drawers:[]};
   const target=root.open('about:blank','_blank');
   if(!target){root.alert('Allow pop-ups for this dashboard to open the PDF preview.');return;}

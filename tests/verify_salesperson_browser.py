@@ -30,6 +30,37 @@ def run(payload,output):
    for key,val in [('gross',gross),('returns',returns),('net',gross-returns),('line_sales',total),('residual',gross-total)]:assert Decimal(str(got[key]))==val,(side,key,got[key],val)
    assert got['missing']==missing
    assert {k:Decimal(str(v)) for k,v in got['categories'].items()}==groups
+  if model['current'] is None:assert model['customers'] is None;return
+  scope=[d for d in docs if d['salesperson']==model['name'] and model['dates']['current_start']<=d['date']<=model['dates']['current_end'] and d['kind'] in ['Invoice','Return']]
+  customers={}
+  for d in scope:
+   g=customers.setdefault(d['customer'],{'sales':Decimal(0),'gross':Decimal(0),'groups':{},'missing':0})
+   g['sales']+=Decimal(str(d['sales']))
+   if d['kind']!='Invoice':continue
+   g['gross']+=Decimal(str(d['sales']));lines=detail['lines'].get(d['key'],[])
+   if not lines:g['missing']+=1
+   for rawline in lines:
+    line=dict(zip(detail['line_fields'],rawline)) if isinstance(rawline,list) else rawline
+    cls,sub=data['item_categories']['items'].get(line['item'],['','']);cls=cls.strip();sub=sub.strip()
+    cat='REBAR' if cls.upper()=='REBAR' or (cls.upper()=='STEEL' and sub=='50') else cls or 'Unclassified'
+    g['groups'][cat]=g['groups'].get(cat,Decimal(0))+Decimal(str(line['sales']))
+  c=model['customers'];assert c['count']==len(customers);assert len(c['rows'])==min(10,len(customers))
+  ordered=sorted(customers,key=lambda n:(-customers[n]['sales'],n))
+  cutoff=customers[ordered[min(10,len(ordered))-1]]['sales'] if ordered else Decimal(0)
+  seen=set();previous=None
+  for rank,row in enumerate(c['rows'],1):
+   assert row['name'] not in seen;seen.add(row['name']);g=customers[row['name']]
+   assert row['rank']==rank and Decimal(str(row['sales']))==g['sales'] and g['sales']>=cutoff
+   assert previous is None or previous>=g['sales'];previous=g['sales']
+   positive=sorted([(k,v) for k,v in g['groups'].items() if v>0],key=lambda kv:(-kv[1],kv[0]))
+   actual=[(x['name'],Decimal(str(x['sales']))) for x in row['categories']]
+   assert len(actual)==min(3,len(positive));assert all(g['groups'][k]==v for k,v in actual)
+   assert sorted(v for k,v in actual)==sorted(v for k,v in positive[:3])
+   total=sum(g['groups'].values(),Decimal(0))
+   assert Decimal(str(row['line_sales']))==total and Decimal(str(row['other_sales']))==total-sum((v for k,v in actual),Decimal(0))
+   assert Decimal(str(row['residual']))==g['gross']-total and row['missing']==g['missing']
+  assert Decimal(str(c['total']))==sum((g['sales'] for g in customers.values()),Decimal(0))==Decimal(str(model['current']['net']))
+  assert Decimal(str(c['other_sales']))==Decimal(str(c['total']))-sum((Decimal(str(row['sales'])) for row in c['rows']),Decimal(0))
  class Handler(SimpleHTTPRequestHandler):
   def log_message(self,*args):pass
   def do_GET(self):
@@ -55,7 +86,8 @@ def run(payload,output):
     report=opened.value;report.wait_for_function('document.documentElement.dataset.reportReady === "true"')
     assert report.locator('.view,.drawer,.report-detail,canvas,script,input,select,[onclick]').count()==0
     assert report.locator('#salespersonComparison').count()==1
-    assert report.locator('#salespersonComparison thead').count()==2
+    assert report.locator('#salespersonComparison thead').count()==3
+    assert report.locator('.pc-customers tbody tr').count()==len(page.evaluate('salespersonReportCapture.model.customers.rows'))
     assert report.locator('#salespersonComparison td[data-label]').count()==page.locator('#salespersonComparison td[data-label]').count()
     assert report.locator('.pc-bar').count()==page.locator('#salespersonComparison .pc-bar').count()
     assert report.locator('.pc-bar').evaluate_all('(xs)=>xs.every(x=>x.style.width!=="")')
@@ -73,9 +105,10 @@ def run(payload,output):
      pg.get_pixmap(matrix=pymupdf.Matrix(1.3,1.3)).save(output/f'{name} page {i+1}.png')
     frozen=text;page.evaluate("document.querySelector('#salespeopleSearch')?.setAttribute('value','changed')");assert report.locator('body').inner_text()==frozen
     checks.append({'name':name,'pages':len(doc),'pdf_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'other_salespeople_checked':len([x for x in people if x!='DYLAN' and len(x)>2]),'table_cells_verified':report.locator('td').count()});report.close()
-   pdf('Dylan Sales Comparison October 8 2026');pdf('Main export individual scope',True)
+   pdf('Dylan Sales Report Top 10 Customers v1.25');pdf('Main export individual scope',True)
    page.set_viewport_size({'width':390,'height':844});pdf('Mobile individual export')
-   page.locator('#salespersonComparison h3').nth(1).scroll_into_view_if_needed();page.screenshot(path=str(output/'mobile-categories.png'))
+   page.locator('.pc-customers').scroll_into_view_if_needed();page.screenshot(path=str(output/'mobile-customers.png'))
+   assert page.locator('.pc-customers').evaluate('(e)=>e.scrollWidth<=e.clientWidth')
    assert page.locator('#salespersonComparison').evaluate('(e)=>e.scrollWidth<=e.clientWidth')
    page.set_viewport_size({'width':1440,'height':1000})
    other=next(p for p in people if p!='DYLAN' and p in data['salesperson_details'])
@@ -96,6 +129,10 @@ def run(payload,output):
    page.evaluate("closeSalesperson();state.viewFilters.salespeople.period='YTD'")
    with page.expect_popup() as opened:page.locator('#exportView').click()
    report=opened.value;report.wait_for_function('document.documentElement.dataset.reportReady === "true"');assert report.locator('.view').count()==1;report.close()
+   for person in people:
+    for f in [{'period':'YTD'},{'period':'1M'},{'period':'MONTH','month':data['as_of'][:7]},{'period':'FULL'}]:
+     checked=page.evaluate('x=>SalespersonComparison.build(state.data,x.person,x.f)',{'person':person,'f':f});independent(checked)
+     checks.append({'person':person,'filter':f,'customer_count':checked['customers']['count'],'independent_decimal_match':True})
    assert not errors,errors;browser.close()
  finally:server.shutdown();server.server_close();worker.join()
  result={'mode':'Edge/Chromium local frozen authenticated-serving payload; not signed-in hosted E2E or native Safari print','checks':checks,'page_errors':errors,'source_sha256':data['sha256'],'payload_sha256':hashlib.sha256(raw).hexdigest(),'as_of':data['as_of'],'guards':['stale snapshot','loading','blocked popup'],'summary':{'current_net':model['current']['net'],'note':'Last exercised scope is FULL; Dylan YTD in dylan-model.json'}}
