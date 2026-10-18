@@ -47,6 +47,36 @@ def promote(v, expected):
         return call(c, 'smi_sales_publish_manifest', v, expected)
 
 
+def test_00_array_assembly_visits_each_recipe_node_once():
+    # Real PostgreSQL instrumentation: a flattened subquery evaluates the
+    # recursive child twice (substr + length), exponentially with nesting.
+    with psycopg.connect(DSN) as c:
+        c.execute("set local track_functions='all'")
+        text = '[1,2]'
+        from scripts.content_storage import digest
+        h = digest(text)
+        c.execute('insert into public.smi_sales_chunks(sha256,content) values(%s,%s) on conflict do nothing', (h,text))
+        recipe = ['a', [['a', [['c', h]]]]]
+        assert call(c, 'smi_sales_assemble', Jsonb(recipe), 0) == text
+        calls = c.execute("select calls from pg_stat_xact_user_functions where funcid='public.smi_sales_assemble(jsonb,integer)'::regprocedure").fetchone()[0]
+        assert calls == 3, f'3 recipe nodes must be evaluated once, got {calls}'
+
+
+def test_00_merge_assembly_once_and_duplicate_guard():
+    with psycopg.connect(DSN) as c:
+        c.execute("set local track_functions='all'")
+        recipe = ['m', [['o', [['"a"', ['v', '-0.0']]]], ['o', [['"b"', ['v', '2.0']]]]]]
+        assert call(c, 'smi_sales_assemble', Jsonb(recipe), 0) == '{"a":-0.0,"b":2.0}'
+        calls = c.execute("select calls from pg_stat_xact_user_functions where funcid='public.smi_sales_assemble(jsonb,integer)'::regprocedure").fetchone()[0]
+        assert calls == 5
+        with pytest.raises(psycopg.Error, match='duplicate SMI merge key'):
+            call(c, 'smi_sales_assemble', Jsonb(['m', [recipe[1][0],recipe[1][0]]]), 0)
+    with psycopg.connect(DSN) as c:
+        config = c.execute("select proconfig from pg_proc where oid='public.smi_sales_current_snapshot()'::regprocedure").fetchone()[0]
+        assert 'statement_timeout=20s' in config
+        assert 'search_path=""' in config
+
+
 def test_01_schema_and_roundtrip():
     p = sample(); v = stage(p)
     with connect('ar_current_operator') as c:

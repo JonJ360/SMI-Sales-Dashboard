@@ -33,6 +33,8 @@ def main():
                 c.execute((root/'supabase/migrations'/name).read_text())
             c.execute("insert into public.smi_sales_snapshots(source_sha256,as_of,refreshed_at,payload) values(repeat('a',64),'2026-09-28',now(),'{\"legacy\":true}'); insert into public.smi_sales_current(snapshot_id) values(1)")
             c.execute((root/'supabase/migrations/005_content_storage.sql').read_text())
+            c.execute((root/'supabase/migrations/006_assemble_single_evaluation.sql').read_text())
+            c.execute((root/'supabase/migrations/007_current_snapshot_budget.sql').read_text())
         env=dict(os.environ,SMI_TEST_DSN=dsn,SMI_TEST_EVIDENCE=str(a.work),PYTHONPATH=str(a.deps)+os.pathsep+str(root))
         if a.payload: env['SMI_TEST_PAYLOAD']=str(a.payload)
         result=subprocess.run([sys.executable,'-m','pytest','tests','-q','--basetemp='+str(a.work/'pytest-temp'),'--junitxml='+str(a.work/'tests.xml')],cwd=root,env=env,capture_output=True,text=True,timeout=600)
