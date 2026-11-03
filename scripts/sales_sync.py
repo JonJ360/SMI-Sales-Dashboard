@@ -412,6 +412,81 @@ def apply_rental_policy(rows, line_rows):
     return result, policy
 
 
+def apply_misc_item_policy(rows, line_rows):
+    """Literal 7518 management estimate: 50% of source extended sales, not cost."""
+    from decimal import Decimal, ROUND_HALF_UP
+    money = lambda x: Decimal(str(x or 0)).quantize(Decimal('.01'), rounding=ROUND_HALF_UP)
+    grouped = defaultdict(list)
+    for line in line_rows:
+        grouped[(str(line.get('kind') or 'Invoice').title(), str(line.get('sop') or '').strip())].append(line)
+    policy = dict(version='misc-7518-management-v1', basis='Management estimate, not supplier actual; GP unchanged', documents=[], exceptions=[])
+    result = []
+    for source in rows:
+        row = dict(source)
+        key = (str(row.get('kind') or 'Invoice').title(), str(row.get('sop') or '').strip())
+        lines = grouped.get(key, [])
+        targets = [l for l in lines if str(l.get('item') or '').strip() == '7518']
+        identity = dict(kind=key[0], sop=key[1], salesperson=str(row.get('salesperson') or 'Unassigned'), date=str(row.get('document_date') or row.get('date'))[:10])
+        def reject(reason):
+            policy['exceptions'].append(dict(identity, reason=reason))
+            result.append(row)
+        if row.get('_misc_7518_bridge'):
+            policy['documents'].append(row['_misc_7518_bridge'])
+            result.append(row)
+            continue
+        if not lines:
+            reject('missing_lines')
+            continue
+        if targets:
+            if row.get('extended_cost') is None or ('gp_extended_cost' in row and row['gp_extended_cost'] is None):
+                reject('missing_header_cost_evidence')
+                continue
+            if any(l.get(k) is None for l in lines for k in ('sales','raw_cost','line_sequence','component_sequence')):
+                reject('missing_line_evidence')
+                continue
+            if key[0] != 'Return' and (money(row['extended_cost']) < 0
+                    or money(row.get('gp_extended_cost', row['extended_cost'])) < 0
+                    or any(money(l['raw_cost']) < 0 for l in lines)):
+                reject('unsupported_negative_invoice_cost')
+                continue
+            ids = [(l.get('line_sequence'), l.get('component_sequence')) for l in lines]
+            if len(ids) != len(set(ids)):
+                reject('duplicate_line_identity')
+                continue
+            gp_sales = money(row.get('gp_sales', row.get('sales')))
+            line_sales = sum((money(l.get('sales')) for l in lines), Decimal(0))
+            if line_sales != gp_sales:
+                reject('incomplete_line_sales')
+                continue
+            base = sum((abs(money(l.get('raw_cost'))) for l in lines if l not in targets), Decimal(0))
+            orientation = -1 if key[0] == 'Return' and gp_sales < 0 else 1
+            estimate = sum((money(orientation * money(l.get('sales')) / 2) for l in targets), Decimal(0))
+            original = money(row.get('extended_cost'))
+            if key[0] == 'Return':
+                original = abs(original)
+            gp_cost = abs(money(row.get('gp_extended_cost', original)))
+            source_cost = sum((abs(money(l.get('raw_cost'))) for l in targets), Decimal(0))
+            candidates = {embedded for total, embedded in ((base,Decimal(0)), (base+source_cost,source_cost), (base+estimate,estimate)) if total == gp_cost}
+            if len(candidates) != 1:
+                reject('ambiguous_header_cost')
+                continue
+            embedded = candidates.pop()
+            adjusted = original + estimate - embedded
+            row.setdefault('gp_sales', row.get('sales'))
+            row.setdefault('gp_extended_cost', row.get('extended_cost'))
+            row['extended_cost'] = float(adjusted)
+            sign = -1 if key[0] == 'Return' else 1
+            bridge = dict(identity, gp_sales=float(sign * abs(gp_sales)), gp_cost=float(sign * gp_cost),
+                          gp_profit=float(sign * (abs(gp_sales)-gp_cost)),
+                          cost=float(sign * adjusted), profit=float(sign * (abs(money(row.get('sales')))-adjusted)),
+                          estimate=float(sign * estimate), source_cost_in_header=float(sign * embedded),
+                          cost_added=float(sign * (estimate-embedded)), basis=policy['basis'])
+            row['_misc_7518_bridge'] = bridge
+            policy['documents'].append(bridge)
+        result.append(row)
+    return result, policy
+
+
 # Explicitly approved correction; live GL evidence is revalidated each refresh.
 VERIFIED_GL_CORRECTION_SQL = """
 SELECT g.JRNENTRY journal, g.TRXDATE date, RTRIM(n.ACTNUMST) account,
@@ -572,7 +647,7 @@ def normalize_transaction(row: Mapping[str, Any]) -> dict[str, Any]:
     sign = -1 if kind == "Return" else 1
     sales_magnitude = abs(round(float(row.get("sales") or 0), 2))
     raw_cost_value = row.get("extended_cost") if row.get("extended_cost") is not None else row.get("cost")
-    raw_cost = abs(float(raw_cost_value or 0))
+    raw_cost = float(raw_cost_value or 0) if row.get('_misc_7518_bridge') else abs(float(raw_cost_value or 0))
     cost_magnitude = raw_cost  # Preserve source costs and losses; never estimate a margin.
     sales = sign * sales_magnitude
     cost = sign * round(cost_magnitude, 2)
@@ -1242,7 +1317,9 @@ def extract() -> dict[str, Any]:
     transaction_rows, rental_policy = apply_rental_policy(transaction_rows, invoice_lines)
     transaction_rows, gl_corrections = apply_verified_gl_corrections(transaction_rows, gl_rows, invoice_lines)
     transaction_rows, direct_costs = apply_approved_direct_costs(transaction_rows, invoice_lines, direct_evidence)
+    transaction_rows, misc_item_policy = apply_misc_item_policy(transaction_rows, invoice_lines)
     snapshot = build_snapshot(transaction_rows)
+    snapshot['misc_item_policy'] = misc_item_policy
     snapshot['approved_direct_costs'] = direct_costs
     snapshot['rental_policy'] = rental_policy
     snapshot['verified_gl_corrections'] = gl_corrections
