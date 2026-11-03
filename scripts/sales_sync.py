@@ -419,14 +419,14 @@ SELECT g.JRNENTRY journal, g.TRXDATE date, RTRIM(n.ACTNUMST) account,
        g.Ledger_ID ledger, g.Back_Out_JE backout_journal,
        CAST(t.TXTFIELD AS varchar(max)) note
 FROM dbo.GL20000 g
-JOIN dbo.GL00105 n ON n.ACTINDX=g.ACTINDX
+LEFT JOIN dbo.GL00105 n ON n.ACTINDX=g.ACTINDX
 LEFT JOIN dbo.SY03900 t ON t.NOTEINDX=g.NOTEINDX
-WHERE g.OPENYEAR=2026 AND g.JRNENTRY=1452013
+WHERE g.OPENYEAR=2026 AND g.JRNENTRY IN (1452013,1469379)
 """
 VERIFIED_GL_CORRECTION_SQL += ' UNION ALL ' + VERIFIED_GL_CORRECTION_SQL.replace('dbo.GL20000', 'dbo.GL30000').replace('g.OPENYEAR', 'g.HSTYEAR')
 
 
-def apply_verified_gl_corrections(rows, gl_rows):
+def apply_walter_gl_correction(rows, gl_rows):
     """Apply only Jon's approved, source-linked CJE; never a margin estimate."""
     from decimal import Decimal
     import re
@@ -466,6 +466,48 @@ def apply_verified_gl_corrections(rows, gl_rows):
             gl_date='2026-06-11', item='UD39514', salesperson=str(row.get('salesperson') or ''),
             gp_sales=float(sales), gp_cost=float(header_cost), gp_profit=float(sales-header_cost),
             cost_reduction=float(credit), cost=float(header_cost-credit), profit=float(sales-header_cost+credit)))
+        result.append(row)
+    return result, policy
+
+
+def apply_verified_gl_corrections(rows, gl_rows, line_rows=()):
+    """Apply reviewed economic corrections once; never sum duplicate journals."""
+    from decimal import Decimal
+    import re
+    money = lambda x: Decimal(str(x or 0)).quantize(Decimal('.01'))
+    rows, policy = apply_walter_gl_correction(rows, [g for g in gl_rows if g.get('journal') == 1452013])
+    result = []
+    for source in rows:
+        row = dict(source)
+        if str(row.get('sop') or '').strip() != '00795214' or str(row.get('kind') or 'Invoice').title() != 'Invoice':
+            result.append(row)
+            continue
+        gl = [g for g in gl_rows if g.get('journal') == 1469379]
+        valid = len(gl) == 2 and all(g.get('voided') == 0 and g.get('ledger') == 1 and g.get('backout_journal') == 0
+            and str(g.get('date'))[:10] == '2026-08-05'
+            and re.search(r'INVOICE\s+00795214\b', str(g.get('note') or ''), re.I)
+            and re.search(r'\bS1100\b', str(g.get('note') or ''), re.I)
+            and re.search(r'PO\s+96407\b', str(g.get('note') or ''), re.I) for g in gl)
+        expected = {('119-00-00', Decimal('235862.88'), Decimal('0.00')), ('410-00-00', Decimal('0.00'), Decimal('235862.88'))}
+        valid = valid and {(g.get('account'), money(g.get('debit')), money(g.get('credit'))) for g in gl} == expected
+        cost = money(row.get('extended_cost'))
+        valid = valid and str(row.get('document_date') or row.get('date'))[:10] == '2026-08-05' and cost in (Decimal('237663.36'), Decimal('1800.48'))
+        lines = [l for l in line_rows if str(l.get('sop') or '').strip() == '00795214' and str(l.get('kind') or 'Invoice').title() == 'Invoice' and l.get('item') == 'S1100' and l.get('line_sequence') == 16384]
+        valid = valid and len(lines) == 1 and money(lines[0].get('quantity')) == 132 and money(lines[0].get('raw_cost')) in (Decimal('237663.36'), Decimal('1800.48'))
+        if not valid:
+            policy['exceptions'].append(dict(sop='00795214',journal=1469379,kind='Invoice',date='2026-08-05',salesperson=str(row.get('salesperson') or ''),reason='approved_Dylan_GL_or_invoice_evidence_changed'))
+            result.append(row)
+            continue
+        if cost == Decimal('1800.48'):
+            result.append(row)
+            continue
+        row.setdefault('gp_sales', row.get('sales'))
+        row.setdefault('gp_extended_cost', row.get('extended_cost'))
+        row['extended_cost'] = 1800.48
+        sales = money(row['sales'])
+        policy['documents'].append(dict(sop='00795214',kind='Invoice',journal=1469379,gl_date='2026-08-05',item='S1100',
+            salesperson=str(row.get('salesperson') or ''),gp_sales=float(sales),gp_cost=float(cost),gp_profit=float(sales-cost),
+            cost_reduction=235862.88,cost=1800.48,profit=float(sales-Decimal('1800.48')),excluded_duplicate_journal=1471752))
         result.append(row)
     return result, policy
 
@@ -1198,7 +1240,7 @@ def extract() -> dict[str, Any]:
         direct_cols = ['po_count', 'bill_count', 'receipt_count', 'gl_count', 'gl_invalid', 'gl_balance', 'gl_cost', 'inventory_count', 'accrual_count']
         direct_evidence = [dict(zip(direct_cols, row)) for row in cursor.fetchall()]
     transaction_rows, rental_policy = apply_rental_policy(transaction_rows, invoice_lines)
-    transaction_rows, gl_corrections = apply_verified_gl_corrections(transaction_rows, gl_rows)
+    transaction_rows, gl_corrections = apply_verified_gl_corrections(transaction_rows, gl_rows, invoice_lines)
     transaction_rows, direct_costs = apply_approved_direct_costs(transaction_rows, invoice_lines, direct_evidence)
     snapshot = build_snapshot(transaction_rows)
     snapshot['approved_direct_costs'] = direct_costs
