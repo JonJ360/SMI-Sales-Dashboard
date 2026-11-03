@@ -470,6 +470,61 @@ def apply_verified_gl_corrections(rows, gl_rows):
     return result, policy
 
 
+APPROVED_DIRECT_COST_SQL = """
+SELECT
+ (SELECT COUNT(*) FROM dbo.POP30110 WHERE PONUMBER='94079' AND ORD=360448 AND ITEMNMBR='41381' AND QTYORDER=1 AND EXTDCOST=16000 AND UNITCOST=16000 AND VENDORID='2264') po_count,
+ (SELECT COUNT(*) FROM dbo.POP30310 l JOIN dbo.POP30300 h ON h.POPRCTNM=l.POPRCTNM WHERE l.PONUMBER='94079' AND l.ITEMNMBR='41381' AND l.EXTDCOST=16000 AND h.VENDORID='2264' AND h.VNDDOCNM='F114466' AND h.POPRCTNM='RCT0137307' AND h.POPTYPE=2 AND h.VOIDSTTS=0) bill_count,
+ (SELECT COUNT(*) FROM dbo.POP30310 l JOIN dbo.POP30300 h ON h.POPRCTNM=l.POPRCTNM WHERE l.PONUMBER='94079' AND l.ITEMNMBR='41381' AND l.EXTDCOST=16000 AND h.VENDORID='2264' AND h.POPRCTNM='RCT0137027' AND h.POPTYPE=1 AND h.VOIDSTTS=0) receipt_count,
+ COUNT(*) gl_count,
+ SUM(CASE WHEN g.VOIDED=0 AND g.Ledger_ID=1 AND g.Back_Out_JE=0 AND g.TRXDATE='20260323' AND g.ORDOCNUM='RCT0137027' THEN 0 ELSE 1 END) gl_invalid,
+ SUM(g.DEBITAMT-g.CRDTAMNT) gl_balance,
+ SUM(CASE WHEN n.ACTNUMST='410-00-00' THEN g.DEBITAMT-g.CRDTAMNT ELSE 0 END) gl_cost,
+ SUM(CASE WHEN n.ACTNUMST='119-00-00' AND g.DEBITAMT=84292.92 AND g.CRDTAMNT=0 THEN 1 ELSE 0 END) inventory_count,
+ SUM(CASE WHEN n.ACTNUMST='205-00-00' AND g.DEBITAMT=0 AND g.CRDTAMNT=100292.92 THEN 1 ELSE 0 END) accrual_count
+FROM (
+ SELECT ACTINDX,VOIDED,Ledger_ID,Back_Out_JE,TRXDATE,ORDOCNUM,DEBITAMT,CRDTAMNT FROM dbo.GL20000 WHERE OPENYEAR=2026 AND JRNENTRY=1426964
+ UNION ALL
+ SELECT ACTINDX,VOIDED,Ledger_ID,Back_Out_JE,TRXDATE,ORDOCNUM,DEBITAMT,CRDTAMNT FROM dbo.GL30000 WHERE HSTYEAR=2026 AND JRNENTRY=1426964
+) g LEFT JOIN dbo.GL00105 n ON n.ACTINDX=g.ACTINDX
+"""
+
+
+def apply_approved_direct_costs(rows, lines, evidence):
+    """One approved supplier allocation, not a general miscellaneous-cost rule."""
+    from decimal import Decimal
+    money = lambda x: Decimal(str(x or 0)).quantize(Decimal('.01'))
+    policy = dict(version='approved-direct-v1', documents=[], exceptions=[])
+    result = []
+    for source in rows:
+        row = dict(source)
+        if str(row.get('sop') or '').strip() != '00777490' or str(row.get('kind') or 'Invoice').title() != 'Invoice':
+            result.append(row)
+            continue
+        fee = [l for l in lines if str(l.get('sop') or '').strip() == '00777490' and str(l.get('kind') or 'Invoice').title() == 'Invoice' and l.get('line_sequence') == 360448 and l.get('item') == '41381']
+        valid = len(evidence) == 1 and all(evidence[0].get(k) == v for k,v in dict(po_count=1,bill_count=1,receipt_count=1,gl_count=3,gl_invalid=0,gl_balance=0,gl_cost=16000,inventory_count=1,accrual_count=1).items())
+        valid = valid and len(fee) == 1 and money(fee[0].get('raw_cost')) == 16000 and money(fee[0].get('quantity')) == 1
+        valid = valid and str(row.get('document_date') or row.get('date'))[:10] == '2026-04-01'
+        cost = money(row.get('extended_cost'))
+        valid = valid and cost in (Decimal('84292.50'), Decimal('100292.50'))
+        if not valid:
+            policy['exceptions'].append(dict(sop='00777490',kind='Invoice',date='2026-04-01',salesperson=str(row.get('salesperson') or ''),reason='approved_supplier_allocation_evidence_or_header_changed'))
+            result.append(row)
+            continue
+        if cost == Decimal('100292.50'):
+            result.append(row)  # Already incorporated in source or a prior application.
+            continue
+        row.setdefault('gp_sales', row.get('sales'))
+        row.setdefault('gp_extended_cost', row.get('extended_cost'))
+        row['extended_cost'] = float(cost + 16000)
+        sales = money(row['sales'])
+        policy['documents'].append(dict(sop='00777490',kind='Invoice',salesperson=str(row.get('salesperson') or ''),cost_added=16000,
+            gp_cost=float(cost),gp_profit=float(sales-cost),cost=float(cost+16000),profit=float(sales-cost-16000),
+            po='94079',supplier_invoice='F114466',journal=1426964,gl_date='2026-03-23',management_date='2026-04-01',
+            link_basis='approved matching purchase package; no explicit SOP-POP link'))
+        result.append(row)
+    return result, policy
+
+
 def normalize_transaction(row: Mapping[str, Any]) -> dict[str, Any]:
     kind = str(row.get("kind") or "Invoice").strip().title()
     sign = -1 if kind == "Return" else 1
@@ -1139,9 +1194,14 @@ def extract() -> dict[str, Any]:
                          for row in cursor.execute(ITEM_CATEGORY_SQL).fetchall()]
         gl_cols = ['journal', 'date', 'account', 'debit', 'credit', 'voided', 'ledger', 'backout_journal', 'note']
         gl_rows = [dict(zip(gl_cols, row)) for row in cursor.execute(VERIFIED_GL_CORRECTION_SQL).fetchall()]
+        cursor.execute(APPROVED_DIRECT_COST_SQL)
+        direct_cols = ['po_count', 'bill_count', 'receipt_count', 'gl_count', 'gl_invalid', 'gl_balance', 'gl_cost', 'inventory_count', 'accrual_count']
+        direct_evidence = [dict(zip(direct_cols, row)) for row in cursor.fetchall()]
     transaction_rows, rental_policy = apply_rental_policy(transaction_rows, invoice_lines)
     transaction_rows, gl_corrections = apply_verified_gl_corrections(transaction_rows, gl_rows)
+    transaction_rows, direct_costs = apply_approved_direct_costs(transaction_rows, invoice_lines, direct_evidence)
     snapshot = build_snapshot(transaction_rows)
+    snapshot['approved_direct_costs'] = direct_costs
     snapshot['rental_policy'] = rental_policy
     snapshot['verified_gl_corrections'] = gl_corrections
     snapshot["item_categories"] = build_item_categories(category_rows)
