@@ -412,6 +412,64 @@ def apply_rental_policy(rows, line_rows):
     return result, policy
 
 
+# Explicitly approved correction; live GL evidence is revalidated each refresh.
+VERIFIED_GL_CORRECTION_SQL = """
+SELECT g.JRNENTRY journal, g.TRXDATE date, RTRIM(n.ACTNUMST) account,
+       g.DEBITAMT debit, g.CRDTAMNT credit, g.VOIDED voided,
+       g.Ledger_ID ledger, g.Back_Out_JE backout_journal,
+       CAST(t.TXTFIELD AS varchar(max)) note
+FROM dbo.GL20000 g
+JOIN dbo.GL00105 n ON n.ACTINDX=g.ACTINDX
+LEFT JOIN dbo.SY03900 t ON t.NOTEINDX=g.NOTEINDX
+WHERE g.OPENYEAR=2026 AND g.JRNENTRY=1452013
+"""
+VERIFIED_GL_CORRECTION_SQL += ' UNION ALL ' + VERIFIED_GL_CORRECTION_SQL.replace('dbo.GL20000', 'dbo.GL30000').replace('g.OPENYEAR', 'g.HSTYEAR')
+
+
+def apply_verified_gl_corrections(rows, gl_rows):
+    """Apply only Jon's approved, source-linked CJE; never a margin estimate."""
+    from decimal import Decimal
+    import re
+    money = lambda x: Decimal(str(x or 0)).quantize(Decimal('.01'))
+    policy = dict(version='verified-gl-v1', documents=[], exceptions=[])
+    result = []
+    for source in rows:
+        row = dict(source)
+        if str(row.get('sop') or '').strip() != '00786458' or str(row.get('kind') or 'Invoice').title() != 'Invoice':
+            result.append(row)
+            continue
+        header_cost = money(row.get('extended_cost'))
+        expected_credit = Decimal('372559.00')
+        valid = len(gl_rows) == 2 and all(
+            r['journal'] == 1452013 and r['voided'] == 0 and r['ledger'] == 1 and r['backout_journal'] == 0
+            and str(r['date'])[:10] == '2026-06-11'
+            and re.search(r'INVOICE\s+00786458\b', str(r.get('note') or ''), re.I)
+            and re.search(r'ITEM\s+UD39514\b', str(r.get('note') or ''), re.I)
+            for r in gl_rows)
+        valid = valid and str(row.get('document_date') or row.get('date'))[:10] == '2026-06-11'
+        valid = valid and {r['account'] for r in gl_rows} == {'120-00-03', '410-00-03'}
+        valid = valid and sum((money(r['debit']) - money(r['credit']) for r in gl_rows), Decimal(0)) == 0
+        credit = sum((money(r['credit']) - money(r['debit']) for r in gl_rows if r['account'] == '410-00-03'), Decimal(0))
+        valid = valid and credit == expected_credit
+        if not valid or header_cost not in (Decimal('374049.50'), Decimal('1490.50')):
+            policy['exceptions'].append(dict(sop='00786458', journal=1452013, date='2026-06-11', kind='Invoice', salesperson=str(row.get('salesperson') or ''), reason='approved_GL_evidence_or_header_changed'))
+            result.append(row)
+            continue
+        if header_cost == Decimal('1490.50'):
+            result.append(row)  # GP has incorporated the correction; never apply twice.
+            continue
+        row.setdefault('gp_sales', row.get('sales'))
+        row.setdefault('gp_extended_cost', row.get('extended_cost'))
+        row['extended_cost'] = float(header_cost - credit)
+        sales = money(row['sales'])
+        policy['documents'].append(dict(sop='00786458', kind='Invoice', journal=1452013,
+            gl_date='2026-06-11', item='UD39514', salesperson=str(row.get('salesperson') or ''),
+            gp_sales=float(sales), gp_cost=float(header_cost), gp_profit=float(sales-header_cost),
+            cost_reduction=float(credit), cost=float(header_cost-credit), profit=float(sales-header_cost+credit)))
+        result.append(row)
+    return result, policy
+
+
 def normalize_transaction(row: Mapping[str, Any]) -> dict[str, Any]:
     kind = str(row.get("kind") or "Invoice").strip().title()
     sign = -1 if kind == "Return" else 1
@@ -1079,9 +1137,13 @@ def extract() -> dict[str, Any]:
         invoice_lines = [dict(zip(invoice_cols, row)) for row in invoice_cursor.fetchall()]
         category_rows = [dict(zip(['item', 'item_class', 'category_1'], row))
                          for row in cursor.execute(ITEM_CATEGORY_SQL).fetchall()]
+        gl_cols = ['journal', 'date', 'account', 'debit', 'credit', 'voided', 'ledger', 'backout_journal', 'note']
+        gl_rows = [dict(zip(gl_cols, row)) for row in cursor.execute(VERIFIED_GL_CORRECTION_SQL).fetchall()]
     transaction_rows, rental_policy = apply_rental_policy(transaction_rows, invoice_lines)
+    transaction_rows, gl_corrections = apply_verified_gl_corrections(transaction_rows, gl_rows)
     snapshot = build_snapshot(transaction_rows)
     snapshot['rental_policy'] = rental_policy
+    snapshot['verified_gl_corrections'] = gl_corrections
     snapshot["item_categories"] = build_item_categories(category_rows)
     snapshot["invoice_drilldown"] = build_invoice_drilldown(transaction_rows, invoice_lines, dt.date.fromisoformat(snapshot['as_of']))
     snapshot["open_orders"] = build_open_orders(order_rows)
