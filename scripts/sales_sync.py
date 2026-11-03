@@ -412,20 +412,26 @@ def apply_rental_policy(rows, line_rows):
     return result, policy
 
 
+MISC_MERCHANDISE_CODES = frozenset({'41381', '41382', '41384', '41387', '41388', '41389', '41390', '41391', '41392', '7518'})
+
+
 def apply_misc_item_policy(rows, line_rows):
-    """Literal 7518 management estimate: 50% of source extended sales, not cost."""
+    """Sydney's reviewed merchandise scope; existing half-extended-sales rule."""
     from decimal import Decimal, ROUND_HALF_UP
+    import re
     money = lambda x: Decimal(str(x or 0)).quantize(Decimal('.01'), rounding=ROUND_HALF_UP)
     grouped = defaultdict(list)
     for line in line_rows:
         grouped[(str(line.get('kind') or 'Invoice').title(), str(line.get('sop') or '').strip())].append(line)
-    policy = dict(version='misc-7518-management-v1', basis='Management estimate, not supplier actual; GP unchanged', documents=[], exceptions=[])
+    policy = dict(version='misc-merchandise-management-v2', item_codes=sorted(MISC_MERCHANDISE_CODES),
+                  held_codes={'41393': 'DO NOT USE; merchandise identity unverified'},
+                  basis='Management estimate, not supplier actual; GP unchanged', documents=[], exceptions=[])
     result = []
     for source in rows:
         row = dict(source)
         key = (str(row.get('kind') or 'Invoice').title(), str(row.get('sop') or '').strip())
         lines = grouped.get(key, [])
-        targets = [l for l in lines if str(l.get('item') or '').strip() == '7518']
+        targets = [l for l in lines if str(l.get('item') or '').strip() in MISC_MERCHANDISE_CODES]
         identity = dict(kind=key[0], sop=key[1], salesperson=str(row.get('salesperson') or 'Unassigned'), date=str(row.get('document_date') or row.get('date'))[:10])
         def reject(reason):
             policy['exceptions'].append(dict(identity, reason=reason))
@@ -438,6 +444,14 @@ def apply_misc_item_policy(rows, line_rows):
             reject('missing_lines')
             continue
         if targets:
+            if key == ('Invoice', '00777490'):
+                reject('reserved_existing_direct_cost_policy')
+                continue
+            if any(str(l.get('item') or '').strip() != '7518' and re.search(
+                    r'\b(?:AMEX|CC\s+FIX|CREDIT\s+CARD|FREIGHT|RENTALS?|SURCHARGE|LABOR|LABOUR|EXPEDIT\w*|SHOP\s+DRAWING|DELIVERY\s+(?:FEE|CHARGE))\b',
+                    str(l.get('description') or ''), re.I) for l in targets):
+                reject('nonmerchandise_target_line')
+                continue
             if row.get('extended_cost') is None or ('gp_extended_cost' in row and row['gp_extended_cost'] is None):
                 reject('missing_header_cost_evidence')
                 continue
