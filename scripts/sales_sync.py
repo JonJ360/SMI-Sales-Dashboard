@@ -54,7 +54,8 @@ ORDER BY document_date, sop
 """
 
 # Exact report header population; history lines joined by document type AND number.
-# Current selectable periods start in 2024; prior comparisons remain aggregate-only.
+# Policy input covers the complete header population, including prior comparisons.
+# build_invoice_drilldown separately restricts displayed detail to 2024 onward.
 INVOICE_LINE_SQL = TRANSACTION_SQL.split("SELECT sop, document_date")[0] + """
 SELECT t.kind, t.sop, l.LNITMSEQ AS line_sequence, l.CMPNTSEQ AS component_sequence,
        LTRIM(RTRIM(l.ITEMNMBR)) AS item, LTRIM(RTRIM(l.ITEMDESC)) AS description,
@@ -64,7 +65,7 @@ SELECT t.kind, t.sop, l.LNITMSEQ AS line_sequence, l.CMPNTSEQ AS component_seque
 FROM transactions t
 JOIN dbo.SOP30300 l ON l.SOPTYPE = CASE WHEN t.kind = 'Return' THEN 4 ELSE 3 END
   AND LTRIM(RTRIM(l.SOPNUMBE)) = t.sop
-WHERE t.rn = 1 AND t.document_date >= '2024-01-01'
+WHERE t.rn = 1
 ORDER BY t.kind, t.sop, l.LNITMSEQ, l.CMPNTSEQ
 """
 
@@ -327,6 +328,88 @@ def _date(value: Any) -> dt.date:
     if isinstance(value, dt.date):
         return value
     return dt.date.fromisoformat(str(value)[:10])
+
+
+def apply_rental_policy(rows, line_rows):
+    """Versioned management reporting allocation; never write GP or estimate margins.
+
+    Rules apply to every person/date on each refresh. Ambiguous source costs
+    remain unchanged and are exposed as exceptions instead of being guessed.
+    """
+    from decimal import Decimal, ROUND_HALF_UP
+    import re
+    def cents(value):
+        return int((Decimal(str(value or 0)) * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+    codes = {'GROUND HEATER RENTAL', '207527'}
+    grouped = defaultdict(list)
+    for line in line_rows:
+        grouped[(str(line.get('kind') or 'Invoice').title(), str(line.get('sop') or '').strip())].append(line)
+    policy = dict(version='rental-management-v1', basis='Management sales and profit; GP actuals preserved in document bridges',
+                  rental_items=sorted(codes), documents=[], exceptions=[])
+    result = []
+    for source in rows:
+        row = dict(source)
+        key = (str(row.get('kind') or 'Invoice').title(), str(row.get('sop') or '').strip())
+        lines = grouped.get(key, [])
+        target = [l for l in lines if str(l.get('item') or '').strip().upper() in codes]
+        unknown = [l for l in lines if l not in target and
+                   (cents(l.get('sales')) or cents(l.get('raw_cost'))) and
+                   'HEATER' in str(l.get('description') or '').upper() and
+                   'RENT' in str(l.get('description') or '').upper()]
+        identity = dict(kind=key[0], sop=key[1], salesperson=str(row.get('salesperson') or 'Unassigned'),
+                        date=str(row.get('document_date') or row.get('date'))[:10])
+        def exception(reason):
+            policy['exceptions'].append(dict(identity, reason=reason))
+        if unknown:
+            exception('unmapped_rental_item')
+        if not target:
+            result.append(row)
+            continue
+        if any(cents(l.get('raw_cost')) < 0 for l in target):
+            exception('negative_rental_source_cost')
+            result.append(row)
+            continue
+        repair = [l for l in target if re.search(r'\b(REPAIRS?|DAMAGES?|BREAKDOWNS?)\b', str(l.get('description') or '').upper())]
+        normal = [l for l in target if l not in repair]
+        rental_cost = sum(cents(l.get('raw_cost')) for l in normal)
+        repair_cost = sum(cents(l.get('raw_cost')) for l in repair)
+        repair_sales = sum(abs(cents(l.get('sales'))) if key[0] == 'Return' else cents(l.get('sales')) for l in repair)
+        # No invented cost for owned-equipment rentals with zero source cost.
+        # Unrelated header/line differences are not rental-policy exceptions.
+        if rental_cost == 0 and repair_cost == 0 and repair_sales == 0:
+            result.append(row)
+            continue
+        other_cost = sum(abs(cents(l.get('raw_cost'))) for l in lines if l not in target)
+        header_cost = abs(cents(row.get('extended_cost') if row.get('extended_cost') is not None else row.get('cost')))
+        header_sales = abs(cents(row.get('sales')))
+        if header_cost == other_cost:
+            adjusted_cost = header_cost + rental_cost
+        elif header_cost == other_cost + rental_cost:
+            adjusted_cost = header_cost
+        elif header_cost == other_cost + rental_cost + repair_cost:
+            adjusted_cost = header_cost - repair_cost
+        else:
+            exception('ambiguous_header_cost')
+            result.append(row)
+            continue
+        if header_sales - repair_sales < 0:
+            exception('repair_recovery_exceeds_header_sales')
+            result.append(row)
+            continue
+        sign = -1 if key[0] == 'Return' else 1
+        row['gp_sales'] = row.get('sales')
+        row['gp_extended_cost'] = row.get('extended_cost') if row.get('extended_cost') is not None else row.get('cost')
+        row['sales'] = (header_sales - repair_sales) / 100
+        row['extended_cost'] = adjusted_cost / 100
+        policy['documents'].append(dict(identity,
+            gp_sales=sign * header_sales / 100, gp_cost=sign * header_cost / 100,
+            gp_profit=sign * (header_sales - header_cost) / 100,
+            sales=sign * (header_sales - repair_sales) / 100, cost=sign * adjusted_cost / 100,
+            profit=sign * (header_sales - repair_sales - adjusted_cost) / 100,
+            rental_cost_added=sign * (adjusted_cost - header_cost + (repair_cost if header_cost == other_cost + rental_cost + repair_cost else 0)) / 100,
+            repair_recovery_excluded=sign * repair_sales / 100, repair_cost_excluded=sign * repair_cost / 100))
+        result.append(row)
+    return result, policy
 
 
 def normalize_transaction(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -616,7 +699,7 @@ def build_invoice_drilldown(
             continue
         key = f"{doc['kind']}:{doc['sop']}"
         doc.update(key=key, date=doc['date'].isoformat(),
-                   raw_cost=round(float(source.get('extended_cost') or source.get('cost') or 0), 2),
+                   raw_cost=round(float(source.get('gp_extended_cost', source.get('extended_cost') or source.get('cost') or 0)), 2),
                    margin_pct=round(100 * doc['profit'] / doc['sales'], 2) if doc['sales'] else None)
         documents[key] = doc
     grouped = defaultdict(list)
@@ -996,7 +1079,9 @@ def extract() -> dict[str, Any]:
         invoice_lines = [dict(zip(invoice_cols, row)) for row in invoice_cursor.fetchall()]
         category_rows = [dict(zip(['item', 'item_class', 'category_1'], row))
                          for row in cursor.execute(ITEM_CATEGORY_SQL).fetchall()]
+    transaction_rows, rental_policy = apply_rental_policy(transaction_rows, invoice_lines)
     snapshot = build_snapshot(transaction_rows)
+    snapshot['rental_policy'] = rental_policy
     snapshot["item_categories"] = build_item_categories(category_rows)
     snapshot["invoice_drilldown"] = build_invoice_drilldown(transaction_rows, invoice_lines, dt.date.fromisoformat(snapshot['as_of']))
     snapshot["open_orders"] = build_open_orders(order_rows)

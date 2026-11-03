@@ -46,7 +46,7 @@ def test_return_lines_sign_and_source_amounts():
 
 def test_query_reuses_exact_posted_normal_population_and_type_join():
     sql = s.INVOICE_LINE_SQL
-    for token in (s.TRANSACTION_SQL.split('SELECT sop, document_date')[0], 't.rn = 1', "t.document_date >= '2024-01-01'", 'l.SOPTYPE = CASE', 'l.SOPNUMBE', 'l.CMPNTSEQ', 'dbo.SOP30300'):
+    for token in (s.TRANSACTION_SQL.split('SELECT sop, document_date')[0], 't.rn = 1', 'l.SOPTYPE = CASE', 'l.SOPNUMBE', 'l.CMPNTSEQ', 'dbo.SOP30300'):
         assert token in sql
     assert 'SOP10200' not in sql
 
