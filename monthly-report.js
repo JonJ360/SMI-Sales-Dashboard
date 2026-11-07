@@ -61,6 +61,7 @@ function render(m){
 function install(getSnapshot,config){
  const select=document.getElementById('monthlyReportMonth'),button=document.getElementById('monthlyReportPdf');
  function sync(){const s=getSnapshot();const keys=Object.keys(s?.months||{}).filter(k=>k<=s.as_of.slice(0,7)).sort().reverse();const old=select.value;select.replaceChildren(...keys.map(k=>{const o=document.createElement('option');o.value=k;o.textContent=k;return o}));if(keys.includes(old))select.value=old;button.disabled=!keys.length}
+ const download=document.createElement('button');download.type='button';download.className=button.className;download.id='monthlyReportDownload';download.textContent='Download monthly PDF';button.after(download);download.onclick=()=>{try{const model=build(getSnapshot(),select.value,config);root.MonthlyReportPDF.create(model).save('SMI-monthly-report-'+model.month+'.pdf')}catch(e){root.alert('PDF download failed: '+e.message+'; Print / Save PDF remains available.')}};
  select.addEventListener('focus',sync);button.onclick=()=>{try{const model=build(getSnapshot(),select.value,config);const target=root.open('about:blank','_blank');if(!target){root.alert('Allow pop-ups to open the monthly report.');return}target.document.open();target.document.write(render(model));target.document.close()}catch(e){root.alert(e.message)}};
  return {sync};
 }
