@@ -1,0 +1,68 @@
+/* Frozen monthly packet engine; shared byte-for-byte between company apps. */
+(function(root){'use strict';
+function build(snapshot,month,config){
+ const s=JSON.parse(JSON.stringify(snapshot));config=JSON.parse(JSON.stringify(config||{}));
+ if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||!s.months?.[month]||month>s.as_of.slice(0,7))throw Error('Choose an available source month');
+ const [year,mm]=month.split('-').map(Number),last=(y,m)=>new Date(Date.UTC(y,m,0)).getUTCDate(),date=(y,m,d)=>`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+ const day=month===s.as_of.slice(0,7)?Number(s.as_of.slice(8,10)):last(year,mm),end=date(year,mm,day),priorEnd=date(year-1,mm,Math.min(day,last(year-1,mm)));
+
+ const metrics=['sales','gross_sales','returns','cost','profit','invoices','return_docs'];
+ const sum=rows=>Object.fromEntries(metrics.map(k=>[k,rows.reduce((n,r)=>n+Math.round(Number(r[k]||0)*100),0)/100]));
+ const group=(rows,key)=>{const groups=new Map();for(const r of rows){const name=String(r[key]||'Unassigned');if(!groups.has(name))groups.set(name,[]);groups.get(name).push(r)}return [...groups].map(([name,rs])=>({name,...sum(rs)})).sort((a,b)=>b.sales-a.sales||a.name.localeCompare(b.name))};
+ const roster=rows=>group([...(config.retained||[]).map(name=>({rollup:name})),...(config.retained?[{rollup:'Other / excluded activity'}]:[]),...rows.map(r=>({...r,rollup:config.retained&&!config.retained.includes(r.name)?'Other / excluded activity':r.name}))],'rollup');
+ const fields=s.invoice_drilldown?.document_fields||[],detailAvailable=['date','sales','profit','salesperson','kind'].every(k=>fields.includes(k));
+ const docs=detailAvailable?(s.invoice_drilldown.documents||[]).map(r=>Array.isArray(r)?Object.fromEntries(fields.map((k,i)=>[k,r[i]])):r).map(d=>({...d,gross_sales:d.kind==='Return'?0:d.sales,returns:d.kind==='Return'?-d.sales:0,invoices:d.kind==='Invoice'?1:0,return_docs:d.kind==='Return'?1:0})):[];
+ const scope=(start,finish,prior=false)=>{
+  if(detailAvailable&&!prior){const rows=docs.filter(d=>d.date>=start&&d.date<=finish);return {total:sum(rows),people:roster(group(rows,'salesperson')),branches:group(rows,'location'),customers:group(rows,'customer')}}
+  const keys=Object.keys(s.months).filter(k=>k>=start.slice(0,7)&&k<=finish.slice(0,7)).sort();
+  const entries=keys.map(k=>s.months[k]),rankKey=prior?'prior_rankings':'rankings';
+  return {total:sum(entries.map(m=>m[prior?'prior':'current']||{})),people:roster(group(entries.flatMap(m=>m[rankKey]?.salespeople||[]),'name')),branches:group(entries.flatMap(m=>m[rankKey]?.branches||[]),'name'),customers:[]};
+ };
+ const monthly=scope(month+'-01',end),ytd=scope(year+'-01-01',end);
+ // Prior aggregates are declared aligned prior cohorts of each selected source month, not a guessed full-month cutoff.
+ const priorCovered=detailAvailable&&(year-1)+'-01-01'>=(s.invoice_drilldown.start||'0000-01-01');
+ const prior=priorCovered?scope((year-1)+'-01-01',priorEnd):scope(year+'-01-01',end,true);
+ const comparison=[...new Set([...ytd.people,...prior.people].map(r=>r.name))].map(name=>({name,sales:ytd.people.find(r=>r.name===name)?.sales||0,prior_sales:prior.people.find(r=>r.name===name)?.sales||0,profit:ytd.people.find(r=>r.name===name)?.profit||0,prior_profit:prior.people.find(r=>r.name===name)?.profit||0}));
+ let customers=ytd.customers;
+ if(!detailAvailable)customers=Object.entries(s.customer_details||{}).map(([name,d])=>({name,...sum((d.monthly||[]).filter(r=>r.year===year&&r.month<=mm))}));
+ customers=customers.map(r=>{const previous=detailAvailable?prior.customers.find(p=>p.name===r.name):sum((s.customer_details?.[r.name]?.monthly||[]).filter(p=>p.year===year-1&&p.month<=mm));return {...r,prior_sales:detailAvailable&&!priorCovered?null:previous?.sales||0}});
+ const customerCoverage={covered:sum(customers),company:ytd.total};customerCoverage.residual=Object.fromEntries(metrics.map(k=>[k,Math.round((ytd.total[k]-customerCoverage.covered[k])*100)/100]));
+ customers.sort((a,b)=>b.sales-a.sales||a.name.localeCompare(b.name));
+ const trends=Object.keys(s.months).filter(k=>k<=month&&k>=(year-1)+'-01').sort().map(name=>({name,...s.months[name].current}));
+ const branchTrends=Object.keys(s.months).filter(k=>k<=month&&k>=year+'-01').sort().flatMap(k=>(s.months[k].rankings?.branches||[]).map(r=>({...r,name:k+' · '+r.name})));
+ return {capturedAt:new Date().toISOString(),customerCoverage,monthly,ytd,prior,comparison,customers:customers.slice(0,10),trends,branchTrends,detailAvailable,backlog:s.open_orders||{},backlogDate:s.as_of,snapshot:s,config,month,end,priorEnd,start:month+'-01',ytdStart:year+'-01-01',priorStart:(year-1)+'-01-01',asOf:s.as_of,sha256:s.sha256||'Unavailable',source:s.source||'Unavailable'};
+}
+
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function render(m){
+ const money=v=>Number(v||0).toLocaleString('en-US',{style:'currency',currency:'USD'}), pct=r=>r.sales?((r.profit/r.sales)*100).toFixed(1)+'%':'—';
+ const cols=[['Salesperson','name'],['Net sales','sales'],['Management profit','profit'],['Margin','margin']];
+ const table=(rows,columns=cols)=>`<table><thead><tr>${columns.map(c=>`<th>${esc(c[0])}</th>`).join('')}</tr></thead><tbody>${rows.length?rows.map(r=>`<tr>${columns.map(([label,k])=>`<td>${esc(k==='margin'?pct(r):['name','orders','invoices'].includes(k)?r[k]??'—':r[k]===null?'—':money(r[k]))}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${columns.length}">No activity / detail unavailable</td></tr>`}</tbody></table>`;
+ const cards=t=>`<aside><div class="card navy"><small>Company net sales</small><strong>${money(t.sales)}</strong></div><div class="card blue"><small>Management gross profit</small><strong>${money(t.profit)}</strong></div><div class="card"><small>Margin</small><strong>${pct(t)}</strong><p>Returns ${money(t.returns)}<br>Invoices ${esc(t.invoices)}</p></div></aside>`;
+ let pages=[];
+ const page=(title,body,total=m.ytd.total,scope=`${m.ytdStart} through ${m.end}`)=>`<section><header><div><h1>${esc(title)}</h1><p>${esc(m.config.company)} · ${esc(scope)}</p></div>${/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(m.config.logo||'')?`<img alt="SMI Structural Materials" src="${m.config.logo}">`:''}</header><div class="layout">${cards(total)}<main>${body}</main></div><footer>Frozen source ${esc(m.asOf)} · ${esc(m.month)} monthly packet · Management reporting, not accounting net income</footer></section>`;
+ const add=(title,rows,columns=cols,total=m.ytd.total,scope)=>{for(let i=0;i<Math.max(1,rows.length);i+=34)pages.push(page(title+(i?' — continued':''),table(rows.slice(i,i+34),columns),total,scope));};
+ add('Monthly salesperson',m.monthly.people,cols,m.monthly.total,`${m.start} through ${m.end}`);
+ add('YTD salesperson',m.ytd.people);
+ const y=Number(m.month.slice(0,4));
+ add('Current / prior aligned comparison',m.comparison,[['Salesperson','name'],[`${y-1} YTD`,'prior_sales'],[`${y} YTD`,'sales'],[`${y-1} profit`,'prior_profit'],[`${y} profit`,'profit']]);
+ add('Branch results',m.ytd.branches,[['Branch','name'],...cols.slice(1)]);
+ const colors={2024:'#9CC9EB',2025:'#D1D5DB',2026:'#2D3691'},years=[y-2,y-1,y];
+ const trend=(branch)=>{const rows=Array.from({length:12},(_,i)=>({name:String(i+1).padStart(2,'0')}));for(const row of rows)for(const yr of years){const key=`${yr}-${row.name}`,month=m.snapshot.months[key];row['y'+yr]=!month||key>m.month?null:branch?(month.rankings?.branches||[]).find(b=>b.name===branch)?.sales||0:month.current.sales;}const max=Math.max(1,...rows.flatMap(r=>years.map(yr=>Math.abs(r['y'+yr]||0))));const svg=`<svg viewBox="0 0 720 210" role="img" aria-label="Monthly net sales by year"><line x1="0" y1="165" x2="720" y2="165" stroke="#888"/>${rows.map((r,i)=>years.map((yr,j)=>{const v=r['y'+yr];if(v===null)return '';const h=Math.abs(v)/max*140;return `<rect x="${i*60+j*15+5}" y="${v<0?165:165-h}" width="13" height="${h}" fill="${colors[yr]||'#2D3691'}"/>`}).join('')+`<text x="${i*60+13}" y="200" font-size="12">${r.name}</text>`).join('')}</svg>`;return `${years.map(yr=>`<span style="display:inline-block;margin-right:20px"><b style="color:${colors[yr]||'#2D3691'}">■</b> ${yr}</span>`).join('')}${svg}${table(rows,[['Month','name'],...years.map(yr=>[String(yr),'y'+yr])])}<p>Blank source months unavailable; future months omitted. Net invoiced sales, not physical deliveries.</p>`;};
+ pages.push(page('Monthly trend',trend()));
+ const backlog=m.backlog;
+ add('Current backlog — by branch',backlog.branches||[],[['Branch','name'],['Amount','amount'],['Orders','orders']],{sales:backlog.amount,profit:0},`Current snapshot ${m.backlogDate} — NOT historical month-end backlog`);
+ add('Current backlog — all salesperson IDs',backlog.salespeople||[],[['Salesperson','name'],['Amount','amount'],['Orders','orders']],{sales:backlog.amount,profit:0},`Current snapshot ${m.backlogDate} — NOT historical month-end backlog`);
+ add('Top customers — current YTD top 10',m.customers,[['Customer','name'],[`${y-1} same cohort`,'prior_sales'],[`${y} net sales`,'sales'],['Management profit','profit'],['Returns','returns']]);
+ if(!m.ytd.branches.length)pages.push(page('Branch trends','<p>Detail unavailable</p>'));for(const branch of m.ytd.branches)pages.push(page('Branch trends · '+branch.name,trend(branch.name)));
+ pages.push(page('Source / basis disclosures',`<p>Source SHA-256: ${esc(m.sha256)}</p><p>Data as of ${esc(m.asOf)}; heartbeat ${esc(m.snapshot.refreshed_at||'Unavailable')}. Captured ${esc(m.capturedAt)}.</p><p>Prior aligned YTD ${esc(m.priorStart)} through ${esc(m.priorEnd)}. Prior values outside document coverage use the source-declared aligned prior monthly aggregates; unavailable prior customer detail is shown as a dash. Signed invoices and returns on document date; published management cost policies retained, GP untouched. Amounts summed in integer cents.</p><p>Retained 30-person roster is scoped to monthly, YTD and comparison. Other / excluded activity preserves the complement, including prior-year-only activity. Company metrics include all activity. No bottom total rows on first four pages. Customer counts are nonadditive.</p><p>Customer coverage net ${money(m.customerCoverage.covered.sales)}; company ${money(m.ytd.total.sales)}; residual ${money(m.customerCoverage.residual.sales)}. Current YTD top ten cohort held fixed in prior year. Current backlog is not month-end backlog.</p><p>${m.detailAvailable?'Declared document_fields transaction detail used.':'Detail unavailable: source typed monthly aggregates used; no transaction-level validation.'} Inventory and expense statements are unavailable from this sales snapshot. No live refresh is triggered by this packet.</p>`));
+ return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(m.config.company)} monthly report ${esc(m.month)}</title><style>@page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}body{margin:0;font:11px Arial;color:#1B1E4A}section{break-after:page;position:relative;min-height:182mm}section:last-child{break-after:auto}header{display:flex;justify-content:space-between;align-items:center;height:60px;margin-bottom:10px}h1{font-size:21px;margin:0}header p{margin:7px 0}header img{width:115px;max-height:55px;object-fit:contain}.layout{display:grid;grid-template-columns:180px 1fr;gap:22px}.card{border:1px solid #2D3691;padding:15px;margin-bottom:13px}.navy{background:#1B1E4A;color:white}.blue{background:#2D3691;color:white}strong{display:block;font-size:21px;margin-top:9px}table{border-collapse:collapse;width:100%;font-size:10px}th{background:#1B1E4A;color:white;text-align:left}td,th{padding:3px 7px}td:not(:first-child),th:not(:first-child){text-align:right;white-space:nowrap}tr:nth-child(even){background:#EDF2F8}tr{break-inside:avoid}thead{display:table-header-group}footer{font-size:9px;margin-top:12px}main{min-width:0;overflow-wrap:anywhere}svg{width:100%;height:170px}.toolbar{padding:15px;background:#EDF2F8}@media print{.toolbar{display:none}*{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><div class="toolbar"><button onclick="window.print()">Print / Save PDF</button> Choose Save as PDF in your browser. Full monthly packet, not the current tab.</div>${pages.join('')}</body></html>`;
+}
+function install(getSnapshot,config){
+ const select=document.getElementById('monthlyReportMonth'),button=document.getElementById('monthlyReportPdf');
+ function sync(){const s=getSnapshot();const keys=Object.keys(s?.months||{}).filter(k=>k<=s.as_of.slice(0,7)).sort().reverse();const old=select.value;select.replaceChildren(...keys.map(k=>{const o=document.createElement('option');o.value=k;o.textContent=k;return o}));if(keys.includes(old))select.value=old;button.disabled=!keys.length}
+ select.addEventListener('focus',sync);button.onclick=()=>{try{const model=build(getSnapshot(),select.value,config);const target=root.open('about:blank','_blank');if(!target){root.alert('Allow pop-ups to open the monthly report.');return}target.document.open();target.document.write(render(model));target.document.close()}catch(e){root.alert(e.message)}};
+ return {sync};
+}
+const api={build,render,install};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.MonthlyReport=api;
+})(typeof window!=='undefined'?window:globalThis);
