@@ -21,7 +21,7 @@ function pdfTexts(status){
  const pdf=new Proxy({text:t=>texts.push(t),splitTextToSize:t=>[t]}, {get:(o,k)=>k in o?o[k]:()=>{}});
  const context={window:{MonthlyReport:{render:()=>''},jspdf:{jsPDF:function(){return pdf;}}},DOMParser:Parser};
  vm.runInNewContext(fs.readFileSync(require.resolve('../monthly-report-pdf.js'),'utf8'),context);
- context.window.MonthlyReportPDF.create({month:'2026-10',asOf:'2026-10-31',sha256:'test',config:{company:'Test'}});
+ context.window.MonthlyReportPDF.create({month:'2026-10',asOf:'2026-10-31',sha256:'test',comparison:[{name:'A',sales:0,prior_sales:0,profit:0,prior_profit:0}],config:{company:'Test'}});
  return texts.join('\n');
 }
 test('native PDF preserves incomplete coverage status rather than claiming zero activity',()=>{
