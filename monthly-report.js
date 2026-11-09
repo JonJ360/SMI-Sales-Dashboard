@@ -61,8 +61,8 @@ function render(m){
  const salespersonPie=(rows,label)=>{
   if(rows.some(r=>r.sales===null||r.sales===undefined||!Number.isFinite(Number(r.sales))))return `<div class="sales-mix"><b>${esc(label)}</b><p>Unavailable — incomplete invoice coverage.</p></div>`;
   const groups=rows.map(r=>({name:r.name,cents:Math.round(Number(r.sales)*100)})).sort((a,b)=>b.cents-a.cents||a.name.localeCompare(b.name));
-  const total=groups.reduce((n,r)=>n+Math.max(0,r.cents),0),palette=['#568AC4','#345B88','#6DADE0','#84ABD6','#929ABB','#83BBD1','#687D94','#B2BFD2','#416A9B','#9C80C7','#A6C9E5','#566FA0','#C3ACD4','#7694B5','#4F86AD','#B9C6DE','#647AB8','#94B8C9','#7C6CA4','#C4D5E3','#426682','#ABA3C6','#87A2D2','#5B8D9C','#CFB6C8','#7991A3','#ABBAD7','#6274A0','#90ADBF','#B3A0BB','#D0DCEC'];let angle=-Math.PI/2;
-  return `<div class="sales-mix"><b>${esc(label)}</b><svg class="salespeople-pie" viewBox="0 0 490 238" role="img" aria-label="${esc(label)}">${groups.map((r,i)=>{const attrs=`fill="${palette[i%palette.length]}" data-value="${r.cents/100}" data-label="${esc(r.name)}"`;if(r.cents<=0)return `<g ${attrs}/>`;const start=angle;angle+=r.cents/total*Math.PI*2;const cx=106,cy=127,rad=92,x=a=>cx+rad*Math.cos(a),yy=a=>cy+rad*Math.sin(a);return r.cents===total?`<circle cx="106" cy="127" r="92" ${attrs}/>`:`<path d="M${cx} ${cy} L${x(start)} ${yy(start)} A92 92 0 ${angle-start>Math.PI?1:0} 1 ${x(angle)} ${yy(angle)} Z" ${attrs}/>`;}).join('')}${groups.map((r,i)=>{const col=Math.floor(i/16),xx=220+col*132,yy=30+i%16*12.5;return `<rect x="${xx-9}" y="${yy-5}" width="5" height="5" fill="${palette[i%palette.length]}"/><text class="mix-legend-name" x="${xx}" y="${yy}" font-size="8.2">${esc(r.name==='Other / excluded activity'?'Other / excluded':r.name)}</text><text x="${xx+120}" y="${yy}" text-anchor="end" font-size="8.2">${(total?Math.max(0,r.cents)/total*100:0).toFixed(1)}%</text>`;}).join('')}${total?'':'<text x="106" y="127" text-anchor="middle" font-size="10">No positive activity</text>'}</svg></div>`;
+  const palette=['#568AC4','#345B88','#6DADE0','#84ABD6','#929ABB','#83BBD1','#687D94','#B2BFD2','#416A9B','#9C80C7','#A6C9E5','#566FA0','#C3ACD4','#7694B5','#4F86AD','#B9C6DE','#647AB8','#94B8C9','#7C6CA4','#C4D5E3','#426682','#ABA3C6','#87A2D2','#5B8D9C','#CFB6C8','#7991A3','#ABBAD7','#6274A0','#90ADBF','#B3A0BB','#D0DCEC'],layout=salespersonLayout(groups.map(r=>({name:r.name,value:r.cents/100}))),total=groups.reduce((n,r)=>n+Math.max(0,r.cents),0);
+  return `<div class="sales-mix"><b>${esc(label)}</b><svg class="salespeople-pie" viewBox="0 0 490 250" role="img" aria-label="${esc(label)}">${layout.map((r,i)=>{const attrs=`fill="${palette[i%palette.length]}" data-value="${r.cents/100}" data-label="${esc(r.name)}"`,x=a=>245+92*Math.cos(a),y=a=>145+92*Math.sin(a);const wedge=r.cents<=0?`<g ${attrs}/>`:r.cents===total?`<circle cx="245" cy="145" r="92" ${attrs}/>`:`<path d="M245 145 L${x(r.start)} ${y(r.start)} A92 92 0 ${r.end-r.start>Math.PI?1:0} 1 ${x(r.end)} ${y(r.end)} Z" ${attrs}/>`;return wedge+(r.points.length?`<polyline points="${r.points.map(p=>p.join(',')).join(' ')}" fill="none" stroke="#999999" stroke-width="0.45"/>`:'')+`<text class="mix-callout-name" x="${r.x}" y="${r.y+3}" text-anchor="${r.side>0?'start':'end'}" font-size="8.2">${esc(r.name)}${r.cents<=0?' (0)':''}</text>`;}).join('')}${total?'':'<text x="245" y="145" text-anchor="middle" font-size="10">No positive activity</text>'}</svg></div>`;
  };
  const comparisonCols=[['Salesperson','name'],[`${y-1} gross`,'prior_sales'],[`${y} gross`,'sales'],['$ change','sales_delta'],['% change','sales_change']];
  const whole=v=>v===null?'Unavailable':Number(v).toLocaleString('en-US',{maximumFractionDigits:0});
@@ -89,5 +89,20 @@ function install(getSnapshot,config){
  select.addEventListener('focus',sync);button.onclick=()=>{try{const model=build(getSnapshot(),select.value,config);const target=root.open('about:blank','_blank');if(!target){root.alert('Allow pop-ups to open the monthly report.');return}target.document.open();target.document.write(render(model));target.document.close()}catch(e){root.alert(e.message)}};
  return {sync};
 }
-const api={build,render,install};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.MonthlyReport=api;
+// Shared page-three geometry, in chart-local points. Never reassign a slice across hemispheres.
+function salespersonLayout(rows){
+ if(rows.some(r=>r.value==null||!Number.isFinite(Number(r.value))))throw new Error('Unavailable chart value');
+ const ps=rows.map(r=>({...r,cents:Math.round(Number(r.value)*100)})),tau=2*Math.PI,total=ps.reduce((n,r)=>n+Math.max(0,r.cents),0);let a=-Math.PI/2;
+ ps.forEach(p=>{p.start=a;a+=total?Math.max(0,p.cents)/total*tau:0;p.end=a;p.mid=(p.start+p.end)/2;});
+ const positive=ps.filter(p=>p.cents>0),norm=a=>(a%tau+tau)%tau,bounds=positive.flatMap(p=>[norm(Math.PI/2-p.mid),norm(-Math.PI/2-p.mid)]).sort((a,b)=>a-b);
+ let rotation=0,best=Infinity,closest=Infinity;
+ const candidates=[0,...bounds.map((a,i)=>norm((a+(i+1<bounds.length?bounds[i+1]:bounds[0]+tau))/2))];
+ for(const r of candidates){const diff=Math.abs(positive.reduce((n,p)=>n+(Math.cos(p.mid+r)>=0?1:-1),0)),distance=Math.min(r,tau-r);if(diff<best||diff===best&&distance<closest){best=diff;closest=distance;rotation=r;}}
+ ps.forEach(p=>{p.start+=rotation;p.end+=rotation;p.mid+=rotation;p.side=Math.cos(p.mid)>=0?1:-1;p.anchor=[245+92*Math.cos(p.mid),145+92*Math.sin(p.mid)];});
+ // Zero/negative entries are explicit names, not fake slices or leaders.
+ ps.filter(p=>p.cents<=0).forEach(p=>{p.side=ps.filter(q=>q!==p&&q.side===1).length<=ps.filter(q=>q!==p&&q.side===-1).length?1:-1;p.anchor=[245+p.side*92,237];});
+ for(const side of [-1,1]){const group=ps.filter(p=>p.side===side).sort((a,b)=>a.anchor[1]-b.anchor[1]),gap=11.5;let previous=48-gap;group.forEach((p,i)=>{p.y=Math.min(238-(group.length-1-i)*gap,Math.max(48+i*gap,p.anchor[1],previous+gap));previous=p.y;p.x=side===1?362:128;const lane=245+side*100;p.points=p.cents>0?[p.anchor,[lane,p.anchor[1]],[lane,p.y],[p.x-side*4,p.y]]:[];});}
+ return ps;
+}
+const api={build,render,install,salespersonLayout};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.MonthlyReport=api;
 })(typeof window!=='undefined'?window:globalThis);
