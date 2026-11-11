@@ -16,11 +16,11 @@ test('current gross comparison requires declared full YTD coverage, not first ob
 });
 function pdfTexts(status){
  const texts=[];const mix={textContent:status,querySelector:()=>({textContent:'Gross sales by year'}),querySelectorAll:()=>[]};
- const section={classList:{contains:c=>c==='comparison-page'},querySelector:s=>s==='main'?{querySelector:()=>null}:{textContent:'Comparison'},querySelectorAll:s=>s==='.sales-mix'?[mix]:[]};
+ const section={classList:{contains:c=>c==='comparison-page'},querySelector:s=>s==='main'?{querySelector:q=>q==='table'?{querySelectorAll:s=>s==='tr'?[{children:Array.from({length:5},()=>({textContent:''}))}]:[]}:null}:{textContent:'Comparison'},querySelectorAll:s=>s==='.sales-mix'?[mix]:[]};
  class Parser{parseFromString(){return {querySelectorAll:()=>[section]};}}
  const pdf=new Proxy({text:t=>texts.push(t),splitTextToSize:t=>[t]}, {get:(o,k)=>k in o?o[k]:()=>{}});
- const context={window:{MonthlyReport:{render:()=>''},jspdf:{jsPDF:function(){return pdf;}}},DOMParser:Parser};
- vm.runInNewContext(fs.readFileSync(require.resolve('../monthly-report-pdf.js'),'utf8'),context);
+ const context={window:{MonthlyReport:{displayModel:m=>m,render:()=>''},jspdf:{jsPDF:function(){return pdf;}}},DOMParser:Parser};
+ vm.runInNewContext(fs.readFileSync(require.resolve('../assets/monthly-report-arial-black-pdf.js'),'utf8'),context);vm.runInNewContext(fs.readFileSync(require.resolve('../monthly-report-pdf.js'),'utf8'),context)
  context.window.MonthlyReportPDF.create({month:'2026-10',asOf:'2026-10-31',sha256:'test',comparison:[{name:'A',sales:0,prior_sales:0,profit:0,prior_profit:0}],config:{company:'Test'}});
  return texts.join('\n');
 }

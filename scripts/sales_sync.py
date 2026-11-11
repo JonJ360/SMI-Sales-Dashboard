@@ -1354,11 +1354,25 @@ def extract() -> dict[str, Any]:
     return snapshot
 
 
-def main() -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="data/sales.json")
-    args = parser.parse_args()
+    parser.add_argument("--with-gl-financials", action="store_true", help="Opt-in reviewed Financial Statements GL company/branch basis; no allocation to transactions")
+    parser.add_argument("--financial-cache", type=Path, help="Existing validated Financial Statements cache; required with --with-gl-financials")
+    args = parser.parse_args(argv)
+    if bool(args.with_gl_financials) != bool(args.financial_cache):
+        parser.error("--with-gl-financials and --financial-cache must be supplied together")
     snapshot = extract()
+    if args.with_gl_financials:
+        from gl_financials import build_gl_financials, snapshot_sha256
+        if snapshot["sha256"] != snapshot_sha256(snapshot):
+            raise ValueError("Transaction source hash mismatch before GL integration")
+        original_sha = snapshot["sha256"]
+        cache = json.loads(args.financial_cache.read_text(encoding="utf-8"))
+        gl = build_gl_financials(cache, snapshot["as_of"], min(YEARS)-1)
+        gl["source"]["transaction_source_sha256"] = original_sha
+        snapshot["gl_financials"] = gl
+        snapshot["sha256"] = snapshot_sha256(snapshot)
     path = Path(args.output)
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + ".tmp")

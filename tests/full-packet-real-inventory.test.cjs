@@ -1,0 +1,8 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),report=require('../monthly-report.js'),config=require('../monthly-report-config.js');
+const source=process.env.SMI_COMPARISON_SOURCE;
+test('actual frozen October packet has 14 pages with four consolidated branch details and dedicated current/prior customer pages without an orphan backlog continuation',{skip:!source},()=>{
+ const model=report.build(JSON.parse(fs.readFileSync(source,'utf8')),'2026-10',config),html=report.render(model),titles=[...html.matchAll(/<h1\b[^>]*>(.*?)<\/h1>/g)].map(m=>m[1]);
+ assert.equal(titles.length,14);assert.deepEqual(model.branchTrendGroups.map(g=>g.name),Object.keys(config.branchConsolidation));for(const group of model.branchTrendGroups)for(const [date,values] of Object.entries(group.months))for(const key of ['sales','profit']){const rows=model.snapshot.months[date].rankings?.branches;if(!rows){assert.equal(values[key],null);continue;}const selected=rows.filter(r=>config.branchConsolidation[group.name].includes(r.name));const expected=selected.some(r=>r[key]==null)?null:selected.reduce((n,r)=>n+Math.round(r[key]*100),0)/100;assert.equal(values[key],expected,group.name+' '+date+' '+key);}assert.equal(titles[7],'Top customers — current-year top 10 population');assert.equal(titles[8],'Top customers — prior-year top 10 population');
+ assert.equal(titles.filter(t=>t.includes('Current backlog — all salesperson IDs')).length,1);
+ for(const row of model.backlog.salespeople)assert.ok(html.includes(row.name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')),row.name);
+});
