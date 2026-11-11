@@ -1297,6 +1297,7 @@ def source_sha256(snapshot: dict[str, Any]) -> str:
 
 
 def extract() -> dict[str, Any]:
+    from settlement_discounts import collect as collect_settlements, apply as apply_settlements, load_approved
     with connect() as connection:
         cursor = connection.cursor()
         cols = ["sop", "document_date", "customer", "salesperson", "location", "sales", "extended_cost", "kind"]
@@ -1328,11 +1329,14 @@ def extract() -> dict[str, Any]:
         cursor.execute(APPROVED_DIRECT_COST_SQL)
         direct_cols = ['po_count', 'bill_count', 'receipt_count', 'gl_count', 'gl_invalid', 'gl_balance', 'gl_cost', 'inventory_count', 'accrual_count']
         direct_evidence = [dict(zip(direct_cols, row)) for row in cursor.fetchall()]
+        settlement_evidence = collect_settlements(connection)
     transaction_rows, rental_policy = apply_rental_policy(transaction_rows, invoice_lines)
     transaction_rows, gl_corrections = apply_verified_gl_corrections(transaction_rows, gl_rows, invoice_lines)
     transaction_rows, direct_costs = apply_approved_direct_costs(transaction_rows, invoice_lines, direct_evidence)
     transaction_rows, misc_item_policy = apply_misc_item_policy(transaction_rows, invoice_lines)
+    transaction_rows, settlement_policy = apply_settlements(transaction_rows, load_approved(), settlement_evidence)
     snapshot = build_snapshot(transaction_rows)
+    snapshot['settlement_discount_policy'] = settlement_policy
     snapshot['misc_item_policy'] = misc_item_policy
     snapshot['approved_direct_costs'] = direct_costs
     snapshot['rental_policy'] = rental_policy

@@ -409,7 +409,7 @@ class SalesSyncTests(unittest.TestCase):
             def cursor(self):
                 return FakeCursor()
 
-        with patch("scripts.sales_sync.connect", return_value=FakeConnection()):
+        with patch("settlement_discounts.collect", return_value=dict(apps=[],gl=[],sop=[],rm=[])), patch("settlement_discounts.load_approved", return_value=[]), patch("scripts.sales_sync.connect", return_value=FakeConnection()):
             snapshot = extract()
 
         self.assertEqual(snapshot["today_activity"], {
@@ -440,7 +440,7 @@ class SalesSyncTests(unittest.TestCase):
             def __exit__(self, *args): return False
             def cursor(self): return FakeCursor()
 
-        with patch("scripts.sales_sync.connect", return_value=FakeConnection()), patch(
+        with patch("settlement_discounts.collect", return_value=dict(apps=[],gl=[],sop=[],rm=[])), patch("settlement_discounts.load_approved", return_value=[]), patch("scripts.sales_sync.connect", return_value=FakeConnection()), patch(
             "scripts.sales_sync.build_snapshot",
             side_effect=lambda rows: build_snapshot(rows, as_of=dt.date(2026, 9, 17)),
         ):
