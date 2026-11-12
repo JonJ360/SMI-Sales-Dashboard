@@ -36,12 +36,13 @@ button,input,select{font:inherit}.app{min-height:100vh;display:grid;grid-templat
 #branches [hidden]{display:none!important}#branches>.grid{grid-template-columns:minmax(210px,.7fr) minmax(0,2fr)}#branchDetailPanel{margin-top:14px;scroll-margin-top:90px}#branchDetailPanel .panel{margin-top:12px}#branchDetailKpis{grid-template-columns:repeat(3,minmax(0,1fr))}#branchDetailKpis .k-value{overflow-wrap:anywhere}#branchDocSearch{height:36px;border:1px solid var(--line2);border-radius:9px;padding:0 10px}#branchCustomers .order-expand,#branchSalespeople .order-expand{white-space:normal;text-align:left}#branchDocuments{scroll-margin-top:90px}@media(max-width:1100px){#branches>.grid{grid-template-columns:1fr}#branches>.grid>.panel:last-child{order:-1}}@media(max-width:760px){#branchDetailPanel,#branchDocuments{scroll-margin-top:180px}#branchDetailKpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 #customers .table-tools{flex-wrap:wrap}#customers .table-tools .search{flex:1 1 180px;min-width:150px}#customers .table-tools label{font-size:12px;color:var(--muted)}#customerCohort{border:1px solid var(--line2);border-radius:9px;background:#fff;padding:8px;color:var(--ink)}#customerExport{white-space:nowrap}#customerDates{line-height:1.6;font-size:11px}
 </style>
+<link rel="stylesheet" href="executive-mobile.css?v=1.40">
 </head>
 <body>
 <div class="lock" id="lock"><div class="lock-card"><div class="lock-logo">SMI</div><h2>Sales Intelligence</h2><p>Use the same secure account as the AR CRM.</p><label for="authUser">User</label><select id="authUser"><option value="jonj@360-llc.com">Jon</option><option value="ben@structuralfab.com">Ben</option><option value="kaley@360-llc.com">Kaley</option><option value="kelsey@360-llc.com">Kelsey</option><option value="randyj@smionline.com">Randy</option></select><label for="authPin">PIN</label><input id="authPin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" placeholder="6-digit PIN"><button id="loginBtn">Sign in</button><div class="lock-error" id="lockError"></div></div></div>
 <div class="app">
 <aside class="side">
-  <div class="brand"><div class="brand-mark">SMI</div><div><div class="eyebrow">Structural Materials</div><h1>Sales Intelligence</h1><div class="version">VERSION 1.39</div></div></div>
+  <div class="brand"><div class="brand-mark">SMI</div><div><div class="eyebrow">Structural Materials</div><h1>Sales Intelligence</h1><div class="version">VERSION 1.40</div></div></div>
   <nav class="nav" aria-label="Report sections">
     <button class="active" data-view="overview">Overview</button>
     <button data-view="salespeople">Salespeople</button>
@@ -231,5 +232,6 @@ const monthlyPacket=window.MonthlyPacket=MonthlyReport.install(()=>state.data,Mo
 refreshBtn.addEventListener('click',()=>monthlyPacket.sync());
 monthlyPacket.sync();
 </script>
+<script src="executive-mobile.js?v=1.40"></script>
 </body>
 </html>
