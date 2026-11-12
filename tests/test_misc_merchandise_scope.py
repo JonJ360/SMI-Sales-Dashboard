@@ -1,9 +1,9 @@
 import pytest
 from copy import deepcopy
 from scripts import sales_sync as s
-from tests.test_misc_item_policy import header, line
+from test_misc_item_policy import header, line
 
-CODES = ['41381','41382','41384','41387','41388','41389','41390','41391','41392','7518']
+CODES = ['204100','46300','RV41390','41381','41382','41384','41387','41388','41389','41390','41391','41392','7518']
 
 @pytest.mark.parametrize('code', CODES)
 def test_sydney_highlighted_merchandise_uses_existing_estimate(code):
@@ -13,9 +13,9 @@ def test_sydney_highlighted_merchandise_uses_existing_estimate(code):
     assert rows[0]['extended_cost']==140
     assert ls==original
     assert set(p['item_codes'])==set(CODES)
-    assert p['version']=='misc-merchandise-management-v2'
+    assert p['version']=='misc-merchandise-management-v3'
 
-@pytest.mark.parametrize('code', ['41393','S1700','FREIGHT','087515','RV41390'])
+@pytest.mark.parametrize('code', ['41393','S1700','FREIGHT','087515'])
 def test_unapproved_or_retired_codes_unchanged(code):
     h=header();rows,p=s.apply_misc_item_policy([h],[line(code,300,40)])
     assert rows==[h] and not p['documents']

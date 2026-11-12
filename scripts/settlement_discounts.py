@@ -27,9 +27,9 @@ def collect(connection):
 
 def load_approved():
     from pathlib import Path
-    path=Path.home()/'OneDrive/Hermes/Documents/SMI Approved Reporting Policies/settlement-discounts-v1-pinned.json'
+    path=Path.home()/'OneDrive/Hermes/Documents/SMI Approved Reporting Policies/settlement-discounts-v1-misc-v3-pinned.json'
     raw=path.read_bytes()
-    if hashlib.sha256(raw).hexdigest()!='e71e081257257c1f7ad1b149e01ca270fa3cadb0c24432816d433bc2b30e903c':raise ValueError('Approved settlement policy hash changed')
+    if hashlib.sha256(raw).hexdigest()!='3e56e045002fb2992d0b6a7643949be4c1fc16c2d7c7a5725c2d87a1c00bb9b2':raise ValueError('Approved settlement policy hash changed')
     return json.loads(raw)
 
 def money(value):

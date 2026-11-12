@@ -412,7 +412,7 @@ def apply_rental_policy(rows, line_rows):
     return result, policy
 
 
-MISC_MERCHANDISE_CODES = frozenset({'41381', '41382', '41384', '41387', '41388', '41389', '41390', '41391', '41392', '7518'})
+MISC_MERCHANDISE_CODES = frozenset({'204100', '46300', 'RV41390', '41381', '41382', '41384', '41387', '41388', '41389', '41390', '41391', '41392', '7518'})
 
 
 def apply_misc_item_policy(rows, line_rows):
@@ -423,7 +423,7 @@ def apply_misc_item_policy(rows, line_rows):
     grouped = defaultdict(list)
     for line in line_rows:
         grouped[(str(line.get('kind') or 'Invoice').title(), str(line.get('sop') or '').strip())].append(line)
-    policy = dict(version='misc-merchandise-management-v2', item_codes=sorted(MISC_MERCHANDISE_CODES),
+    policy = dict(version='misc-merchandise-management-v3', item_codes=sorted(MISC_MERCHANDISE_CODES),
                   held_codes={'41393': 'DO NOT USE; merchandise identity unverified'},
                   basis='Management estimate, not supplier actual; GP unchanged', documents=[], exceptions=[])
     result = []
@@ -436,6 +436,50 @@ def apply_misc_item_policy(rows, line_rows):
         def reject(reason):
             policy['exceptions'].append(dict(identity, reason=reason))
             result.append(row)
+        # Exclusions run before cached-policy reuse, including item 7518.
+        # Descriptions anywhere in Josh's document establish the bundle marker.
+        josh_bundle = str(row.get('salesperson') or '').strip().upper() == 'JOSH' and any(
+                re.search(r'(?<![^\W_])(?:ABOVE[\W_]+ALL[\W_]+FOR|ABOVE[\W_]+FOR[\W_]+ALL|ALL[\W_]+THE[\W_]+ABOVE[\W_]+FOR)(?![^\W_])',
+                          str(l.get('description') or ''), re.I) for l in lines)
+        nonmerchandise = key != ('Invoice', '00777490') and any(re.search(
+                r'\b(?:AMEX|CC\s+FIX|CREDIT\s+CARD|FREIGHT|RENTALS?|SURCHARGE|LABOR|LABOUR|EXPEDIT\w*|SHOP\s+DRAWING|DELIVERY\s+(?:FEE|CHARGE))\b',
+                str(l.get('description') or ''), re.I) for l in targets)
+        if josh_bundle or nonmerchandise:
+            excluded_reason = 'josh_above_all_bundle' if josh_bundle else 'nonmerchandise_target_line'
+            cached = row.get('_misc_7518_bridge')
+            if '_misc_7518_bridge' in row:
+                # Undo only this policy's recorded delta, not earlier approved
+                # rental/GL/supplier corrections or original GP evidence.
+                try:
+                    if (cached['kind'], cached['sop']) != key:
+                        raise ValueError('cached identity mismatch')
+                    delta = Decimal(str(cached['cost_added']))
+                    current = Decimal(str(row['extended_cost']))
+                    recorded = Decimal(str(cached['cost']))
+                    sign = -1 if key[0] == 'Return' else 1
+                    normalized_before = sign * (recorded - delta)
+                    before = Decimal(str(cached.get('pre_misc_extended_cost', normalized_before)))
+                    values = (delta, current, recorded, normalized_before, before)
+                    if not all(v.is_finite() and v == money(v) for v in values):
+                        raise ValueError('nonfinite or non-cent cached cost')
+                    if (abs(before) if key[0] == 'Return' else before) != normalized_before:
+                        raise ValueError('inconsistent cached cost bridge')
+                    # Current is in post-policy normalized cost orientation.
+                    # Remove only the signed MISC delta, preserving subsequent
+                    # unrelated corrections before restoring source orientation.
+                    restored = current - sign * delta
+                    if key[0] == 'Return':
+                        if restored < 0:
+                            raise ValueError('unsupported negative restored return cost')
+                        if before < 0:
+                            restored = -restored
+                except (KeyError, TypeError, ValueError, ArithmeticError):
+                    reject(excluded_reason + '_cached_cost_unverified')
+                    continue
+                row['extended_cost'] = float(money(restored))
+                row.pop('_misc_7518_bridge')
+            reject(excluded_reason + '_excluded' if josh_bundle else excluded_reason)
+            continue
         if row.get('_misc_7518_bridge'):
             policy['documents'].append(row['_misc_7518_bridge'])
             result.append(row)
@@ -446,11 +490,6 @@ def apply_misc_item_policy(rows, line_rows):
         if targets:
             if key == ('Invoice', '00777490'):
                 reject('reserved_existing_direct_cost_policy')
-                continue
-            if any(str(l.get('item') or '').strip() != '7518' and re.search(
-                    r'\b(?:AMEX|CC\s+FIX|CREDIT\s+CARD|FREIGHT|RENTALS?|SURCHARGE|LABOR|LABOUR|EXPEDIT\w*|SHOP\s+DRAWING|DELIVERY\s+(?:FEE|CHARGE))\b',
-                    str(l.get('description') or ''), re.I) for l in targets):
-                reject('nonmerchandise_target_line')
                 continue
             if row.get('extended_cost') is None or ('gp_extended_cost' in row and row['gp_extended_cost'] is None):
                 reject('missing_header_cost_evidence')
@@ -494,7 +533,8 @@ def apply_misc_item_policy(rows, line_rows):
                           gp_profit=float(sign * (abs(gp_sales)-gp_cost)),
                           cost=float(sign * adjusted), profit=float(sign * (abs(money(row.get('sales')))-adjusted)),
                           estimate=float(sign * estimate), source_cost_in_header=float(sign * embedded),
-                          cost_added=float(sign * (estimate-embedded)), basis=policy['basis'])
+                          cost_added=float(sign * (estimate-embedded)),
+                          pre_misc_extended_cost=source.get('extended_cost'), basis=policy['basis'])
             row['_misc_7518_bridge'] = bridge
             policy['documents'].append(bridge)
         result.append(row)
