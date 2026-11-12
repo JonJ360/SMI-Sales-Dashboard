@@ -107,7 +107,10 @@ function displayModel(model){
   return [...keep,other];};
  return {...model,individualLinesGrouped:true,personResults:Object.fromEntries(Object.entries(model.personResults).map(([key,period])=>[key,{...period,people:group(period.people)}])),comparison:group(model.comparison),backlog:{...model.backlog,salespeople:group(model.backlog.salespeople)}};
 }
-function render(m){
+function capitalizeWords(value){return String(value??'').replace(/\p{L}{4,}/gu,word=>word[0].toUpperCase()+word.slice(1));}
+function capitalizeReportHtml(html){return html.replace(/(<style\b[^>]*>[\s\S]*?<\/style>|<script\b[^>]*>[\s\S]*?<\/script>|<[^>]*>|&(?:#\d+|#x[\da-f]+|[a-z][a-z\d]*);)|([^<&]+)/gi,(_,markup,text)=>markup||capitalizeWords(text));}
+function render(m){return capitalizeReportHtml(renderRaw(m));}
+function renderRaw(m){
  m=displayModel(m);
  const percentText=(v,row,key)=>{const metric=key?.replace(/_change$/,''),now=row?.[metric],before=row?.['prior_'+metric];if(Number.isFinite(now)&&Number.isFinite(before)&&before!==0){const rate=(now-before)/Math.abs(before)*100;return (rate>=0?'+':'')+Math.round(rate)+'%';}return typeof v==='string'?v.replace(/([-+]?\d+\.\d+)%/g,(_,n)=>(n.startsWith('+')?'+':'')+Math.round(Number(n))+'%'):v;};
  const money=v=>Number(v||0).toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0,minimumFractionDigits:0}), pct=r=>r.sales?((r.profit/r.sales)*100).toFixed(0)+'%':'—';
@@ -208,5 +211,5 @@ function salespersonLayout(rows,options={}){
  const result=rows.map(r=>{const base={...r,cents:Math.round(Number(r.value)*100),cx:315,cy:172.5,radius:129,points:[],start:0,end:0,x:0,y:0,side:1};if(Number(r.value)<=0)return base;const i=index++,g=data.getItemLayout(i),el=data.getItemGraphicEl(i),t=el.getTextContent(),line=el.getTextGuideLine(),transform=t.getComputedTransform()||[1,0,0,1,0,0];return {...base,showLabel:!t.ignore&&!t.invisible,start:g.startAngle,end:g.endAngle,mid:(g.startAngle+g.endAngle)/2,x:transform[4],y:transform[5],side:t.style.align==='left'?1:-1,points:line&&!line.ignore&&!t.ignore?line.shape.points.map(p=>p.slice()):[]};});
  chart.dispose();return result;
 }
-const api={build,render,install,salespersonLayout,displayModel};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.MonthlyReport=api;
+const api={build,render,install,salespersonLayout,displayModel,capitalizeWords,capitalizeReportHtml};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.MonthlyReport=api;
 })(typeof window!=='undefined'?window:globalThis);

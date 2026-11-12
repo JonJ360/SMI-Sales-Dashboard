@@ -4,7 +4,7 @@ const dom=new DOMParser().parseFromString(root.MonthlyReport.render(m),'text/htm
 const font=root.MonthlyReportPDFFont;if(!font)throw new Error('Arial Black PDF resource is missing; reload the report before downloading.');
 pdf.addFileToVFS(font.file,font.data);pdf.addFont(font.file,font.family,'normal');const supported=new Set(font.codepoints);
 function selectFont(value){const text=Array.isArray(value)?value.join(''):String(value??'');pdf.setFont([...text].every(c=>supported.has(c.codePointAt(0))||c==='\n'||c==='\r')?font.family:'helvetica','normal');}
-const clean=v=>String(v??'').replace(/[−–—]/g,'-').replace(/·/g,' | ');
+const clean=v=>root.MonthlyReport.capitalizeWords(String(v??'').replace(/[−–—]/g,'-').replace(/·/g,' | '));
 function txt(v,x,y,z=10,b=false,opt={}){v=Array.isArray(v)?v.map(clean):clean(v);selectFont(v);pdf.setFontSize(z);const limit=opt.maxWidth||(opt.align==='center'&&z>=19?890:0),width=Math.max(...(Array.isArray(v)?v:[v]).map(t=>pdf.getTextWidth(t)));if(limit&&width>limit)pdf.setFontSize(z*limit/width);pdf.setTextColor('#555555');pdf.text(v,x,y,opt);}
 function box(x,y,w,h){pdf.setDrawColor('#999999');pdf.setLineWidth(.5);pdf.rect(x,y,w,h);}
 function table(t,x,y,w,ws=null,rh=16,z=10){if(!t)return;const rows=[...t.querySelectorAll('tr')],n=rows[0].children.length;ws=ws||[w*.25,...Array(n-1).fill(w*.75/(n-1))];rows.forEach((r,i)=>{const h=i?rh:28;pdf.setFillColor(i?i%2?'#FFFFFF':'#F1F6FC':'#DCEAF7');pdf.rect(x,y,w,h,'F');let xx=x;[...r.children].forEach((c,j)=>{if(!i){pdf.setFontSize(z<8?z:9);txt(pdf.splitTextToSize(clean(c.textContent),ws[j]-(z<8?4:8)),xx+(z<8?2:4),y+10,z<8?z:9,true);}else txt(c.textContent,xx+(j?ws[j]-4:4),y+rh*.72,z,false,{align:j?'right':'left',maxWidth:ws[j]-8});xx+=ws[j];});y+=h;});}
