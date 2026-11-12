@@ -1,6 +1,18 @@
 /* Executive mobile presentation only. Existing data, report and auth handlers remain owners. */
 (() => {
   'use strict';
+  // Preserve the original policy status and full exception list; mirror only its
+  // existing summary so a closed disclosure still exposes counts or warnings.
+  const policyStatus = document.getElementById('miscPolicyStatus');
+  const policyCounts = document.getElementById('miscPolicyCounts');
+  if (policyStatus && policyCounts) {
+    const syncPolicyCounts = () => {
+      const first = policyStatus.firstElementChild;
+      policyCounts.textContent = (first && first.tagName === 'B' ? first.textContent : policyStatus.textContent).trim();
+    };
+    new MutationObserver(syncPolicyCounts).observe(policyStatus, {childList:true, subtree:true, characterData:true});
+    syncPolicyCounts();
+  }
   const mq = matchMedia('(max-width:760px)'), nav = document.querySelector('.nav'), brand = document.querySelector('.brand'), controls = document.querySelector('.controls');
   const originalNav = [...nav.querySelectorAll('[data-view]')], reportControls = [...controls.children].filter(e => e.id !== 'refreshBtn');
   const refresh = document.getElementById('refreshBtn'), filter = document.querySelector('#overview > .report-filter');

@@ -112,7 +112,7 @@ button,input,select{font:inherit}.app{min-height:100vh;display:grid;grid-templat
     </div></div>
   </section>
   <details class="panel-note" id="rentalPolicyNote" hidden><summary id="rentalPolicySummary">Management rental policy</summary><div id="rentalPolicyExceptions"></div><p>Normal rental line costs included; repair expenses and customer repair reimbursements excluded from management performance. Original GP figures remain in document bridges. No accounting entries changed. Weekly stock-only orders, raw margin screening and source-line category charts retain their separately labeled bases.</p></details>
-  <details class="panel-note" open><summary>Miscellaneous merchandise · Management estimate, not supplier actual</summary><p>Management reporting uses 50% of source extended line sales for items 204100, 41381, 41382, 41384, 41387, 41388, 41389, 41390, 41391, 41392, 46300, 7518 and RV41390, across salespeople and history, with signed returns. Josh's “Above All For”, “Above For All” and “All the Above For” bundled orders retain their source or separately approved costs instead of the automatic MISC estimate. Reused nonmerchandise lines and ambiguous bridges retain source cost; approved actual allocations take precedence. Item 41393 (DO NOT USE) remains held. GP and source lines are unchanged. Weekly stock-only orders, raw margin screening, and source-line reports retain their separate raw-cost bases.</p><div id="miscPolicyStatus"></div></details><div class="source"><span><b>Source:</b> Dynamics GP SQL · Posted invoices/returns and normal sales orders · Net Sales = Gross Sales − Returns</span><span id="refreshText">Last refreshed —</span></div>
+  <details class="panel-note" id="miscPolicyNote"><summary>Miscellaneous merchandise · Management estimate, not supplier actual<span id="miscPolicyCounts" style="display:block;font-weight:650;margin-top:3px"></span></summary><p>Management reporting uses 50% of source extended line sales for items 204100, 41381, 41382, 41384, 41387, 41388, 41389, 41390, 41391, 41392, 46300, 7518 and RV41390, across salespeople and history, with signed returns. Josh's “Above All For”, “Above For All” and “All the Above For” bundled orders retain their source or separately approved costs instead of the automatic MISC estimate. Reused nonmerchandise lines and ambiguous bridges retain source cost; approved actual allocations take precedence. Item 41393 (DO NOT USE) remains held. GP and source lines are unchanged. Weekly stock-only orders, raw margin screening, and source-line reports retain their separate raw-cost bases.</p><div id="miscPolicyStatus"></div></details><div class="source"><span><b>Source:</b> Dynamics GP SQL · Posted invoices/returns and normal sales orders · Net Sales = Gross Sales − Returns</span><span id="refreshText">Last refreshed —</span></div>
 </div>
 </main>
 </div>
@@ -232,6 +232,6 @@ const monthlyPacket=window.MonthlyPacket=MonthlyReport.install(()=>state.data,Mo
 refreshBtn.addEventListener('click',()=>monthlyPacket.sync());
 monthlyPacket.sync();
 </script>
-<script src="executive-mobile.js?v=1.40"></script>
+<script src="executive-mobile.js?v=1.40.1"></script>
 </body>
 </html>
