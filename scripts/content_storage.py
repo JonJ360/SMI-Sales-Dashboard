@@ -77,6 +77,10 @@ def build(snapshot):
         return ['c', h]
 
     def node(value, depth=0):
+        if isinstance(value, dict) and value.get('version') == 'posted-header-dimensions-v1':
+            entries = list(value['documents'].items())
+            refs = [chunk(dict(entries[i:i+1000])) for i in range(0, len(entries), 1000)]
+            return ['o', [[canonical(k), ['m', refs] if k == 'documents' else node(value[k], depth+1)] for k in sorted(value)]]
         if isinstance(value, dict) and depth < 1:
             return ['o', [[canonical(k), node(value[k], depth + 1)] for k in sorted(value)]]
         if not isinstance(value, (dict, list)):
