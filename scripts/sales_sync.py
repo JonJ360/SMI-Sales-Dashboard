@@ -1330,6 +1330,8 @@ def extract() -> dict[str, Any]:
         direct_cols = ['po_count', 'bill_count', 'receipt_count', 'gl_count', 'gl_invalid', 'gl_balance', 'gl_cost', 'inventory_count', 'accrual_count']
         direct_evidence = [dict(zip(direct_cols, row)) for row in cursor.fetchall()]
         settlement_evidence = collect_settlements(connection)
+        from posted_document_dimensions import collect as collect_dimensions
+        posted_dimensions = collect_dimensions(connection)
     transaction_rows, rental_policy = apply_rental_policy(transaction_rows, invoice_lines)
     transaction_rows, gl_corrections = apply_verified_gl_corrections(transaction_rows, gl_rows, invoice_lines)
     transaction_rows, direct_costs = apply_approved_direct_costs(transaction_rows, invoice_lines, direct_evidence)
@@ -1343,6 +1345,7 @@ def extract() -> dict[str, Any]:
     snapshot['verified_gl_corrections'] = gl_corrections
     snapshot["item_categories"] = build_item_categories(category_rows)
     snapshot["invoice_drilldown"] = build_invoice_drilldown(transaction_rows, invoice_lines, dt.date.fromisoformat(snapshot['as_of']))
+    snapshot["posted_document_dimensions"] = posted_dimensions
     snapshot["open_orders"] = build_open_orders(order_rows)
     snapshot["today_activity"] = build_today_activity(activity_rows)
     snapshot["margin_exceptions"] = build_margin_exceptions(
