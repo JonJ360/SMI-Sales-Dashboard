@@ -80,7 +80,7 @@ def test_integration_and_disclosure_contract():
     assert sync.index('transaction_rows, misc_item_policy = apply_misc_item_policy') < sync.index('snapshot = build_snapshot(transaction_rows)')
     assert "snapshot['misc_item_policy'] = misc_item_policy" in sync
     html = (root/'index.html').read_text()
-    assert 'VERSION 1.40' in html
+    assert 'VERSION 1.41' in html
     assert 'Management estimate, not supplier actual' in html
     assert 'misc_item_policy' in html
     assert 'misc_item_policy' in (root/'invoice-drilldown.js').read_text()
