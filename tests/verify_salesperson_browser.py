@@ -107,7 +107,7 @@ def run(payload,output):
     checks.append({'name':name,'pages':len(doc),'pdf_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'other_salespeople_checked':len([x for x in people if x!='DYLAN' and len(x)>2]),'table_cells_verified':report.locator('td').count()});report.close()
    pdf('Dylan Sales Report Top 10 Customers v1.25');pdf('Main export individual scope',True)
    page.set_viewport_size({'width':390,'height':844});pdf('Mobile individual export')
-   page.locator('.pc-customers').scroll_into_view_if_needed();page.screenshot(path=str(output/'mobile-customers.png'))
+   page.get_by_role('tab',name='Customers',exact=True).click();page.locator('.pc-customers').scroll_into_view_if_needed();page.screenshot(path=str(output/'mobile-customers.png'))
    assert page.locator('.pc-customers').evaluate('(e)=>e.scrollWidth<=e.clientWidth')
    assert page.locator('#salespersonComparison').evaluate('(e)=>e.scrollWidth<=e.clientWidth')
    page.set_viewport_size({'width':1440,'height':1000})
@@ -116,7 +116,7 @@ def run(payload,output):
    assert switched['name']==other
    page.evaluate("openSalesperson('DYLAN','salespeople')")
    page.evaluate("()=>{window.savedCategories=state.data.item_categories;state.data.item_categories={...savedCategories,items:Object.fromEntries(Object.keys(savedCategories.items).map(k=>[k,['<img src=x onerror=alert(1)>','']]))};renderSalespersonComparison('DYLAN','salespeople')}")
-   assert page.locator('#salespersonComparison img').count()==0 and '<img' in page.locator('#salespersonComparison').inner_text()
+   page.get_by_role('tab',name='Customers',exact=True).click();assert page.locator('#salespersonComparison img').count()==0 and '<img' in page.locator('#salespersonComparison').inner_text()
    page.evaluate("state.data.item_categories=savedCategories;renderSalespersonComparison('DYLAN','salespeople')")
    for filter in [{'period':'1M'},{'period':'MONTH','month':'2026-10'},{'period':'MONTH','month':'2025-02'},{'period':'MONTH','month':'2024-01'},{'period':'FULL'}]:
     model=page.evaluate("f=>{state.viewFilters.salespeople={...state.viewFilters.salespeople,...f};openSalesperson('DYLAN','salespeople');return salespersonReportCapture.model}",filter);independent(model);checks.append({'filter':filter,'prior_available':model['prior'] is not None,'independent_decimal_match':True})

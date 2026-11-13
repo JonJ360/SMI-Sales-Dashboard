@@ -1,0 +1,47 @@
+/* Option 1 Executive Profile. All selectors deliberately scoped to salesperson detail. */
+body.ep-detail-open{overflow:hidden}
+#salespersonDrawer .drawer{width:min(760px,94vw);padding:24px;background:#f0f4f8;color:#172b48;overscroll-behavior:contain;gap:0}
+#salespersonDrawer .drawer-head{order:0;align-items:flex-start;margin-bottom:20px;gap:12px;flex-wrap:wrap}
+#salespersonDrawer .drawer-head>div{flex:1;min-width:160px}
+#salespersonDrawer .drawer-head .eyebrow{font-size:10px;letter-spacing:1.6px;color:#6f8098;text-transform:uppercase}
+#salespersonDrawer #drawerName{font-size:30px;letter-spacing:-1px;overflow-wrap:anywhere;margin:4px 0 9px}
+#salespersonDrawer #drawerPeriod{font-size:12px;line-height:1.6;color:#60728b;max-width:460px}
+#salespersonDrawer .drawer-close{border-radius:50%;width:36px;height:36px;flex:none}
+#salespersonDrawer .drawer-head [data-report-export]{order:2;flex-basis:100%;font-size:11px;padding:8px;min-height:36px;white-space:normal;background:#fff;color:#496079;border:1px solid #dce4ef;border-radius:9px}
+#salespersonDrawer .drawer-kpis{order:1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:0}
+#salespersonDrawer .drawer-kpis .kpi{border:1px solid #e0e7f0;border-radius:16px;padding:20px;min-width:0;box-shadow:0 3px 12px #172b4805;background:white;min-height:88px}
+#salespersonDrawer .drawer-kpis .kpi:nth-child(1),#salespersonDrawer .drawer-kpis .kpi:nth-child(2){grid-column:1/-1}
+#salespersonDrawer .drawer-kpis .kpi:nth-child(1){background:#172f53;color:white;border-color:#172f53;padding:24px}
+#salespersonDrawer .drawer-kpis .k-label{font-size:10px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#718097}
+#salespersonDrawer .drawer-kpis .kpi:nth-child(1) .k-label{color:#adc5e6}
+#salespersonDrawer .drawer-kpis .k-value{font-size:25px;line-height:1.2;letter-spacing:-.6px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;max-width:100%;margin-top:8px}
+#salespersonDrawer #drawerSales{font-size:clamp(30px,7vw,46px);letter-spacing:-1.5px;color:#fff}
+#salespersonDrawer #drawerProfit{font-size:clamp(28px,6vw,38px);color:inherit}
+#salespersonDrawer .ep-profit-note{font-size:10px;color:#718097;margin-top:8px}
+#salespersonDrawer .ep-tabs{order:2;display:flex;padding:5px;gap:4px;background:#e3eaf3;border-radius:12px;margin:20px 0 16px}
+#salespersonDrawer .ep-tabs button{flex:1;min-width:0;border:0;border-radius:9px;padding:12px 4px;background:transparent;color:#637389;font:650 12px 'Segoe UI',sans-serif;cursor:pointer}
+#salespersonDrawer .ep-tabs button[aria-selected=true]{background:white;box-shadow:0 2px 5px #152e4b12;color:#174e91}
+#salespersonDrawer button:focus-visible,#salespersonDrawer summary:focus-visible,#salespersonDrawer input:focus-visible,#salespersonDrawer select:focus-visible{outline:3px solid #2e6fd9;outline-offset:2px}
+#salespersonDrawer #salespersonComparison{order:3;border:1px solid #e0e7f0;border-radius:16px;box-shadow:none;background:#fff;margin-bottom:14px}
+#salespersonDrawer #salespersonComparison .panel-head{padding:16px 18px;background:white;border-radius:16px 16px 0 0}
+#salespersonDrawer #salespersonComparison .panel-body{padding:0 18px 18px}
+#salespersonDrawer #salespersonComparison h3{font-size:14px;margin-top:14px}
+#salespersonDrawer #invoiceDrilldown{order:3;border-radius:16px;border:1px solid #e0e7f0}
+#salespersonDrawer .ep-history{order:4;margin-bottom:16px}
+#salespersonDrawer .ep-history>summary,#salespersonDrawer .ep-notes>summary{cursor:pointer;font-size:12px;font-weight:650;color:#496079;padding:14px 0;line-height:1.5}
+#salespersonDrawer .ep-notes .pc-notes{margin-top:0;padding-top:10px}
+#salespersonDrawer .ep-history .drawer-grid{display:block}
+#salespersonDrawer .ep-history .drawer-pies{display:grid}
+#salespersonDrawer [data-ep-panel][hidden]{display:none!important}
+#salespersonDrawer .drawer[data-executive-tab="2"] #salespersonComparison{display:none}
+#salespersonDrawer .table-tools{flex-wrap:wrap;gap:8px}
+#salespersonDrawer .table-tools label{font-size:11px;max-width:100%}
+#salespersonDrawer .table-tools input{max-width:100%;min-width:0}
+@media(max-width:760px){
+ #salespersonDrawer .drawer{width:100%;padding:22px;max-width:none;box-shadow:none}
+ #salespersonDrawer .drawer-pies{grid-template-columns:1fr}
+ #salespersonDrawer .drawer-kpis .kpi{padding:18px}
+ #salespersonDrawer .person-comparison td{font-size:12px}
+}
+@media(max-width:360px){#salespersonDrawer .drawer{padding:18px}#salespersonDrawer #drawerSales{font-size:34px}#salespersonDrawer #drawerProfit{font-size:30px}#salespersonDrawer .drawer-kpis .k-value{font-size:22px}}
+@media print{#salespersonDrawer [data-ep-panel][hidden]{display:block!important}#salespersonDrawer .ep-tabs{display:none}#salespersonDrawer details>*{display:block!important}}

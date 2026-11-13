@@ -127,7 +127,13 @@ function exportSalesperson(){
     asOf:captured.asOf,sha:captured.sha||'Unavailable',heartbeat:captured.heartbeat||'Unavailable',capturedAt:new Date().toISOString(),
     version:document.querySelector('.version').textContent,dates:captured.model.dates,
     scope:'Scope: '+captured.model.name+' only. Complete selected-period comparison and top 10 customers with main purchases, not a company dashboard. Net sales include returns; categories are gross invoice-line sales before returns.',
-    sources:[document.getElementById('salespersonComparison')],drawers:[]};
+    sources:[],drawers:[]};
+  // Render the unchanged selected-person report, not whichever UI tab is visible.
+  // Detached original markup includes all current/prior tables and accounting notes.
+  const completeComparison=document.createElement('section');
+  completeComparison.id='salespersonComparison';completeComparison.className='panel person-comparison';
+  completeComparison.innerHTML=salespersonComparisonHTML(captured.model);
+  context.sources=[completeComparison];
   const target=root.open('about:blank','_blank');
   if(!target){root.alert('Allow pop-ups for this dashboard to open the PDF preview.');return;}
   try{createDocument(target,context)}catch(error){target.close();root.alert('The report could not be prepared. Please try again.');}
