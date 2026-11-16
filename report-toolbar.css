@@ -33,3 +33,7 @@
  }
 }
 @media print{#reportMenuButton,#reportMenuPanel{display:none!important}}
+
+/* Actual refresh lifecycle: indeterminate while waiting, full line only on success. */
+@media screen{#refreshProgress{position:fixed;top:0;left:0;right:0;height:3px;z-index:10000;pointer-events:none;overflow:hidden;background:#dbeafe}#refreshProgress[hidden]{display:none!important}.refresh-progress-line{height:100%;background:#2475ef}#refreshProgress.loading .refresh-progress-line{width:30%;animation:smi-refresh-sweep 1.15s ease-in-out infinite}#refreshProgress.complete .refresh-progress-line{width:100%;animation:none}@keyframes smi-refresh-sweep{from{transform:translateX(-100%)}to{transform:translateX(340%)}}@media(prefers-reduced-motion:reduce){#refreshProgress.loading .refresh-progress-line{width:30%;animation:none;opacity:.65}}}
+@media print{#refreshProgress{display:none!important}}
