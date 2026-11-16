@@ -14,8 +14,8 @@
     syncPolicyCounts();
   }
   const mq = matchMedia('(max-width:760px)'), nav = document.querySelector('.nav'), brand = document.querySelector('.brand'), controls = document.querySelector('.controls');
-  const originalNav = [...nav.querySelectorAll('[data-view]')], reportControls = [...controls.children].filter(e => e.id !== 'refreshBtn');
-  const refresh = document.getElementById('refreshBtn'), filter = document.querySelector('#overview > .report-filter');
+  const originalNav = [...nav.querySelectorAll('[data-view]')];
+  const filter = document.querySelector('#overview > .report-filter');
   const anchors = new Map();
   function relocate(node, target) {
     if (!anchors.has(node)) { const anchor = document.createComment('executive restore'); node.before(anchor); anchors.set(node, anchor); }
@@ -38,18 +38,18 @@
     d.addEventListener('click',e=>{if(e.target===d){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close();}});
     document.body.append(d);return d;
   }
-  const reports=button('executiveReports','Reports','reports'), more=button('executiveMore','More','more');
-  const reportsDialog=dialog('executiveReportsDialog','Reports'), moreDialog=dialog('executiveMoreDialog','More reports');
+  const more=button('executiveMore','More','more');
+  const moreDialog=dialog('executiveMoreDialog','More reports');
   for(const [b,i] of originalNav.map((b,i)=>[b,i])) { if(i<4)b.insertAdjacentHTML('afterbegin',icon(b.dataset.view)); b.addEventListener('click',()=>{if(moreDialog.open)moreDialog.close();more.classList.toggle('active',originalNav.slice(4).includes(b));}); }
-  reports.setAttribute('aria-haspopup','dialog');more.setAttribute('aria-haspopup','dialog');
-  reports.onclick=()=>reportsDialog.showModal();more.onclick=()=>moreDialog.showModal();
-  controls.append(reports);nav.append(more);refresh.setAttribute('aria-label','Refresh sales data');
+  more.setAttribute('aria-haspopup','dialog');
+  more.onclick=()=>moreDialog.showModal();
+  nav.append(more);
   function apply() {
     if(mq.matches) {
-      relocate(refresh,brand);relocate(filter,controls);controls.append(reports);
-      reportControls.forEach(e=>relocate(e,reportsDialog));originalNav.slice(4).forEach(e=>relocate(e,moreDialog));
+      relocate(filter,controls);
+      originalNav.slice(4).forEach(e=>relocate(e,moreDialog));
     } else {
-      if(reportsDialog.open)reportsDialog.close();if(moreDialog.open)moreDialog.close();
+      if(moreDialog.open)moreDialog.close();
       for(const [node,anchor] of anchors)anchor.after(node);
     }
   }
