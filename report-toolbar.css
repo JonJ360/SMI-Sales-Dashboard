@@ -34,7 +34,7 @@
 }
 @media print{#reportMenuButton,#reportMenuPanel{display:none!important}}
 
-/* Selected Pixel blocks skin: completed phase milestones, never animated/fake fill. */
+/* Selected Pixel blocks skin: measured transfer bytes, never animated/fake fill. */
 @media screen{
  #refreshProgress{position:fixed;top:0;left:0;right:0;height:64px;padding:10px 14px;z-index:10000;pointer-events:none;overflow:hidden;box-sizing:border-box;background:#f2f7ff;border-bottom:1px solid #d5e4fa;color:#18314e;font-family:Consolas,monospace}
  #refreshProgress[hidden]{display:none!important}
