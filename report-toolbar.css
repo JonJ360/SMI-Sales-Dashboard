@@ -34,6 +34,12 @@
 }
 @media print{#reportMenuButton,#reportMenuPanel{display:none!important}}
 
-/* Actual refresh lifecycle: indeterminate while waiting, full line only on success. */
-@media screen{#refreshProgress{position:fixed;top:0;left:0;right:0;height:3px;z-index:10000;pointer-events:none;overflow:hidden;background:#dbeafe}#refreshProgress[hidden]{display:none!important}.refresh-progress-line{height:100%;background:#2475ef}#refreshProgress.loading .refresh-progress-line{width:30%;animation:smi-refresh-sweep 1.15s ease-in-out infinite}#refreshProgress.complete .refresh-progress-line{width:100%;animation:none}@keyframes smi-refresh-sweep{from{transform:translateX(-100%)}to{transform:translateX(340%)}}@media(prefers-reduced-motion:reduce){#refreshProgress.loading .refresh-progress-line{width:30%;animation:none;opacity:.65}}}
+/* Selected Pixel blocks skin: completed phase milestones, never animated/fake fill. */
+@media screen{
+ #refreshProgress{position:fixed;top:0;left:0;right:0;height:64px;padding:10px 14px;z-index:10000;pointer-events:none;overflow:hidden;box-sizing:border-box;background:#f2f7ff;border-bottom:1px solid #d5e4fa;color:#18314e;font-family:Consolas,monospace}
+ #refreshProgress[hidden]{display:none!important}
+ .refresh-progress-caption{display:flex;justify-content:space-between;gap:8px;font-size:12px;line-height:15px;font-weight:bold;margin-bottom:7px;letter-spacing:1px}
+ .refresh-progress-track{height:19px;padding:3px;box-sizing:border-box;overflow:hidden;background:#e3edfb;border:2px solid #234f85}
+ .refresh-progress-line{height:100%;width:0;background:repeating-linear-gradient(90deg,#2276ec 0px,#2276ec 10px,transparent 10px,transparent 13px);box-shadow:inset 0 2px #82bbff}
+}
 @media print{#refreshProgress{display:none!important}}

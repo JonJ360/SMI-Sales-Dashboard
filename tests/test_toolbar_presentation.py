@@ -16,8 +16,8 @@ def test_toolbar_uses_original_controls_and_has_no_financial_mutations():
 
 def test_toolbar_asset_versions_and_no_duplicate_mobile_report_menu():
     html=(ROOT/'index.html').read_text(encoding='utf-8')
-    assert 'VERSION 1.44' in html
-    assert 'report-toolbar.css?v=1.44' in html
+    assert 'VERSION 1.45' in html
+    assert 'report-toolbar.css?v=1.45' in html
     assert 'report-toolbar.js?v=1.43' in html
     mobile=(ROOT/'executive-mobile.js').read_text(encoding='utf-8')
     assert "dialog('executiveReportsDialog'" not in mobile
@@ -26,4 +26,12 @@ def test_toolbar_asset_versions_and_no_duplicate_mobile_report_menu():
 def test_inline_financial_and_auth_scripts_unchanged():
     html=(ROOT/'index.html').read_bytes().replace(b'\r\n',b'\n')
     scripts=re.findall(rb'<script>(.*?)</script>',html,re.S)
+    # Strip ONLY the exact authorized load() progress instrumentation, retaining the
+    # reviewed v1.42 full-script hash for every financial/auth/render statement.
+    hooks = [b"window.SalesRefreshProgress?.start();", b"window.SalesRefreshProgress?.stage(25);",
+             b"window.SalesRefreshProgress?.stage(75);", b"window.SalesRefreshProgress?.stage(90);",
+             b";window.SalesRefreshProgress?.finish()", b"window.SalesRefreshProgress?.fail();"]
+    assert [scripts[0].count(h) for h in hooks] == [1, 2, 1, 1, 1, 1]
+    for hook in hooks:
+        scripts[0] = scripts[0].replace(hook, b'')
     assert [hashlib.sha256(script).hexdigest() for script in scripts]==EXPECTED_INLINE
