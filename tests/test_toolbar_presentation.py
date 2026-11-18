@@ -16,8 +16,8 @@ def test_toolbar_uses_original_controls_and_has_no_financial_mutations():
 
 def test_toolbar_asset_versions_and_no_duplicate_mobile_report_menu():
     html=(ROOT/'index.html').read_text(encoding='utf-8')
-    assert 'VERSION 1.46' in html
-    assert 'report-toolbar.css?v=1.46' in html
+    assert 'VERSION 1.47' in html
+    assert 'report-toolbar.css?v=1.47' in html
     assert 'report-toolbar.js?v=1.43' in html
     mobile=(ROOT/'executive-mobile.js').read_text(encoding='utf-8')
     assert "dialog('executiveReportsDialog'" not in mobile
@@ -35,4 +35,10 @@ def test_inline_financial_and_auth_scripts_unchanged():
     read_hook = b"await (window.SalesRefreshProgress?window.SalesRefreshProgress.readJson(res):res.json())"
     assert scripts[0].count(read_hook) == 2
     scripts[0] = scripts[0].replace(read_hook, b"await res.json()")
+    # Reverse only the exact raw-RPC request witness; baseline hashes stay pinned.
+    header = b",...(rpc==='smi_sales_download_snapshot'?{Accept:'application/octet-stream'}:{})"
+    primary = b"request('smi_sales_download_snapshot').then(res=>res.status===404?request('smi_sales_current_snapshot'):res)"
+    assert scripts[0].count(header) == 1
+    assert scripts[0].count(primary) == 1
+    scripts[0] = scripts[0].replace(header, b'').replace(primary, b"request('smi_sales_current_snapshot')")
     assert [hashlib.sha256(script).hexdigest() for script in scripts]==EXPECTED_INLINE
