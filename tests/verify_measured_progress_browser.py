@@ -13,7 +13,7 @@ def run(output):
         page.add_script_tag(content=(ROOT/'refresh-progress.js').read_text())
         page.evaluate("""() => {window.results=[];window.begin=(known)=>{SalesRefreshProgress.start();const raw=new TextEncoder().encode('{"name":"é"}');window.raw=raw;let controller;const body=new ReadableStream({start(c){controller=c}});window.chunk=()=>controller.enqueue(raw.slice(0,6));window.end=()=>{controller.enqueue(raw.slice(6));controller.close()};const res=new Response(body,{headers:known?{'X-Uncompressed-Content-Length':String(raw.length)}:{}});window.pending=SalesRefreshProgress.readJson(res).then(x=>{results.push(x);return x});};} """)
         page.evaluate('SalesRefreshProgress.start()')
-        assert page.locator('.refresh-progress-caption').inner_text()=='Preparing'
+        assert page.locator('.refresh-progress-caption').inner_text()=='Loading sales data'
         assert page.locator('#refreshProgress').get_attribute('aria-valuenow') is None
         page.screenshot(path=str(output/'preparing.png'))
         for known in [True,False]:

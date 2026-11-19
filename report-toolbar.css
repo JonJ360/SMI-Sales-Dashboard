@@ -39,7 +39,10 @@
  #refreshProgress{position:fixed;top:0;left:0;right:0;height:64px;padding:10px 14px;z-index:10000;pointer-events:none;overflow:hidden;box-sizing:border-box;background:#f2f7ff;border-bottom:1px solid #d5e4fa;color:#18314e;font-family:Consolas,monospace}
  #refreshProgress[hidden]{display:none!important}
  .refresh-progress-caption{display:flex;justify-content:space-between;gap:8px;font-size:12px;line-height:15px;font-weight:bold;margin-bottom:7px;letter-spacing:1px}
- .refresh-progress-track{height:19px;padding:3px;box-sizing:border-box;overflow:hidden;background:#e3edfb;border:2px solid #234f85}
+ .refresh-progress-track{position:relative;height:19px;padding:3px;box-sizing:border-box;overflow:hidden;background:#e3edfb;border:2px solid #234f85}
  .refresh-progress-line{height:100%;width:0;background:repeating-linear-gradient(90deg,#2276ec 0px,#2276ec 10px,transparent 10px,transparent 13px)}
+ #refreshProgress.waiting .refresh-progress-track:before{content:'';position:absolute;inset:3px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='9'%3E%3Crect x='.5' y='.5' width='9' height='8' fill='none' stroke='%232276ec'/%3E%3C/svg%3E");background-repeat:repeat-x;animation:refresh-outline-pulse 1.2s ease-in-out infinite alternate}
+ @keyframes refresh-outline-pulse{from{opacity:.3}to{opacity:1}}
+ @media(prefers-reduced-motion:reduce){#refreshProgress.waiting .refresh-progress-track:before{animation:none;opacity:.65}}
 }
 @media print{#refreshProgress{display:none!important}}

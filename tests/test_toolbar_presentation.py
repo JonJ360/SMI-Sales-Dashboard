@@ -16,8 +16,8 @@ def test_toolbar_uses_original_controls_and_has_no_financial_mutations():
 
 def test_toolbar_asset_versions_and_no_duplicate_mobile_report_menu():
     html=(ROOT/'index.html').read_text(encoding='utf-8')
-    assert 'VERSION 1.48' in html
-    assert 'report-toolbar.css?v=1.48' in html
+    assert 'VERSION 1.49' in html
+    assert 'report-toolbar.css?v=1.49' in html
     assert 'report-toolbar.js?v=1.43' in html
     mobile=(ROOT/'executive-mobile.js').read_text(encoding='utf-8')
     assert "dialog('executiveReportsDialog'" not in mobile

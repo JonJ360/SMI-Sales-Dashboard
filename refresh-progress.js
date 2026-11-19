@@ -8,7 +8,7 @@ let active=false,timer,completed=false,generation=0;
 const frame=()=>new Promise(resolve=>typeof requestAnimationFrame==='function'?requestAnimationFrame(resolve):setTimeout(resolve,0));
 async function painted(){await frame();await frame();}
 function display(phase,detail='',n=null){label.textContent=phase;percent.textContent=detail.replace(/\s+\(\d+ bytes\)$/,'');line.style.width=n===null?'0%':n+'%';bar.className=n===null?'loading indeterminate':'loading';if(n===null)bar.removeAttribute('aria-valuenow');else bar.setAttribute('aria-valuenow',String(n));bar.setAttribute('aria-valuetext',phase+(detail?' — '+detail:''));}
-function start(){clearTimeout(timer);generation++;active=true;completed=false;bar.hidden=false;display('Preparing');}
+function start(){clearTimeout(timer);generation++;active=true;completed=false;bar.hidden=false;display('Loading sales data');bar.className+=' waiting';}
 function fail(){clearTimeout(timer);generation++;active=false;completed=false;bar.hidden=true;bar.className='';bar.removeAttribute('aria-valuenow');}
 async function building(){display('Building dashboard');await painted();}
 function totalBytes(res){const get=k=>res.headers?.get(k),positive=v=>/^\d+$/.test(v||'')&&Number.isSafeInteger(Number(v))&&Number(v)>0?Number(v):null;const custom=positive(get('x-uncompressed-content-length'));if(custom)return custom;const encoding=get('content-encoding');return encoding==='identity'||(!encoding&&['basic','default'].includes(res.type))?positive(get('content-length')):null;}
