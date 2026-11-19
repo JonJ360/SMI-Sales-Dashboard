@@ -8,7 +8,7 @@ let active=false,timer,waitTimer,completed=false,generation=0,shown=0;
 const frame=()=>new Promise(resolve=>typeof requestAnimationFrame==='function'?requestAnimationFrame(resolve):setTimeout(resolve,0));
 async function painted(){await frame();await frame();}
 function display(phase,detail='',n=null){label.textContent=phase;percent.textContent=detail.replace(/\s+\(\d+ bytes\)$/,'');line.style.width=n===null?'0%':n+'%';bar.className=n===null?'loading indeterminate':'loading';if(n===null)bar.removeAttribute('aria-valuenow');else bar.setAttribute('aria-valuenow',String(n));bar.setAttribute('aria-valuetext',phase+(detail?' — '+detail:''));}
-function estimate(n,detail=''){shown=Math.max(shown,Math.min(95,Math.floor(n)));display('Loading · estimated',detail?`${shown}% · ${detail}`:`${shown}%`,shown);}
+function estimate(n,detail=''){shown=Math.max(shown,Math.min(95,Math.floor(n)));display('Loading sales data',detail?`${shown}% · ${detail}`:`${shown}%`,shown);}
 function stopWaiting(){clearTimeout(waitTimer);waitTimer=null;}
 function start(){clearTimeout(timer);stopWaiting();const run=++generation,began=performance.now();active=true;completed=false;shown=0;bar.hidden=false;estimate(0);const tick=()=>{if(run!==generation||!active)return;const t=Math.min(1,(performance.now()-began)/8000);estimate(25*t);if(t<1)waitTimer=setTimeout(tick,Math.min(100,8000-(performance.now()-began)));};waitTimer=setTimeout(tick,100);}
 function fail(){clearTimeout(timer);stopWaiting();generation++;active=false;completed=false;bar.hidden=true;bar.className='';bar.removeAttribute('aria-valuenow');}

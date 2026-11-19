@@ -50,7 +50,7 @@ def run(output):
                     assert s['n']==int(anchor+(95-anchor)*(i+1)/4),s
                     assert abs(s['fill']/s['track']*100-s['n'])<.1,s
                     assert s['captionFits'] and not s['overflow'] and not s['hidden'],s
-                    assert 'estimated' in s['text'] and s['animation']=='none' and s['transition']=='0s',s
+                    assert s['text'].startswith('Loading sales data') and s['animation']=='none' and s['transition']=='0s',s
                 shot=output/f'body-{width}.png';page.screenshot(path=str(shot));result['screenshots'].append(str(shot))
                 gates[3].set();parsed=page.evaluate('pending');assert parsed['name']=='é' and len(parsed['padding'])==64000
                 page.wait_for_timeout(450);build=page.evaluate(snapshot)
