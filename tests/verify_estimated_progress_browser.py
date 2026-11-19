@@ -33,14 +33,14 @@ def run(output):
             page.goto(f'http://127.0.0.1:{server.server_port}')
             page.add_style_tag(content=(ROOT/'report-toolbar.css').read_text())
             page.add_script_tag(content=(ROOT/'refresh-progress.js').read_text())
-            for width,delay in [(320,450),(390,4700),(1024,450)]:
+            for width,delay in [(320,450),(390,8200),(1024,450)]:
                 page.set_viewport_size({'width':width,'height':700})
                 headers.clear()
                 for gate in gates:gate.clear()
                 page.evaluate("""() => {SalesRefreshProgress.start();window.pending=fetch('/raw',{method:'POST',headers:{Accept:'application/octet-stream'},body:'{}'}).then(r=>SalesRefreshProgress.readJson(r));} """)
                 a=page.evaluate(snapshot);page.wait_for_timeout(delay);b=page.evaluate(snapshot)
-                assert 0<=a['n']<b['n']<=15,(a,b)
-                if delay>4500:assert b['n']==15
+                assert 0<=a['n']<b['n']<=25,(a,b)
+                if delay>8000:assert b['n']==25
                 shot=output/f'waiting-{width}.png';page.screenshot(path=str(shot));result['screenshots'].append(str(shot))
                 headers.set();page.wait_for_timeout(150);anchor=page.evaluate(snapshot)['n']
                 values=[b['n'],anchor]
@@ -76,7 +76,7 @@ def run(output):
             page.evaluate('SalesRefreshProgress.fail()');assert page.locator('#refreshProgress').is_hidden()
             # Reduced motion permits numeric estimates but no interpolated CSS motion.
             page.emulate_media(reduced_motion='reduce');page.evaluate('SalesRefreshProgress.start()');page.wait_for_timeout(450)
-            reduced=page.evaluate(snapshot);assert 0<reduced['n']<=15 and reduced['animation']=='none' and reduced['transition']=='0s'
+            reduced=page.evaluate(snapshot);assert 0<reduced['n']<=25 and reduced['animation']=='none' and reduced['transition']=='0s'
             page.emulate_media(media='print');assert page.locator('#refreshProgress').is_hidden()
             page.emulate_media(media='screen');page.evaluate('SalesRefreshProgress.fail()');page.wait_for_timeout(450);assert page.locator('#refreshProgress').is_hidden()
             # Immediate restart must survive the prior completion hide deadline.
